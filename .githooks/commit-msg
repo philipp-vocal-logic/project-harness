@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-subject="$(head -n 1 "$1")"
-[[ "$subject" =~ ^(Merge|Revert)\  ]] && exit 0
-
-if [[ "$subject" =~ ^(plan|test|feat|review)\( ]]; then
-    exec uv run harness check --commit-msg "$1"
-fi
-
-pattern='^(fix|refactor|docs|chore|build|ci|perf|style)(\([A-Za-z0-9_.-]+\))?!?: .+'
-if (( ${#subject} > 72 )) || ! [[ "$subject" =~ $pattern ]]; then
-    echo "$1 [ERR_COMMIT_MSG]: invalid subject '$subject'; expected <type>(<target>): <summary> (<= 72 chars)" >&2
-    exit 1
-fi
+# Subject validation and checks are driven by .policy/workflow.toml:
+# stage commits run their stage checks, workflow.commit_types run workflow.checks.
+exec uv run harness check --commit-msg "$1"

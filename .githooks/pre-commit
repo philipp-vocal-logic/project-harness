@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Policy and test checks run in commit-msg, where the commit type (and thus the
+# stage, e.g. red-test commits that must fail pytest) is known.
 uv lock --check -q
-uv run harness check

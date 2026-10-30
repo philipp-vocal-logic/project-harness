@@ -17,6 +17,16 @@ forbid = [
 fix = "Import direction is cli -> core -> model. Keep model.py pure and free of IO, CLI, config loading, and printing."
 
 [[rules]]
+files = ["src/project_harness/config.py"]
+max_lines = 200
+forbid = [
+    "^\\s*(from|import)\\s+project_harness\\.(cli|core)\\b",
+    "^\\s*(from|import)\\s+(sys|argparse|subprocess)\\b",
+    "\\bprint\\s*\\(",
+]
+fix = "Import direction is cli -> core -> config -> model. Keep config.py limited to parsing and validating workflow.toml."
+
+[[rules]]
 files = ["src/project_harness/core.py"]
 max_lines = 350
 forbid = [
@@ -24,7 +34,7 @@ forbid = [
     "^\\s*(from|import)\\s+(sys|argparse)\\b",
     "\\bprint\\s*\\(",
 ]
-fix = "Import direction is cli -> core -> model. Keep CLI parsing and stdout/stderr printing out of core.py."
+fix = "Import direction is cli -> core -> config -> model. Keep CLI parsing and stdout/stderr printing out of core.py."
 
 [[rules]]
 files = ["src/project_harness/cli.py"]

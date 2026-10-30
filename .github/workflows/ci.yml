@@ -29,5 +29,6 @@ jobs:
       - name: Run branch workflow history & merge gate on PRs
         if: github.event_name == 'pull_request'
         run: uv run harness check --base origin/${{ github.base_ref }}
+      - run: uv lock --check
       - name: Run full policy & test checks
-        run: ./.githooks/pre-commit
+        run: uv run harness check

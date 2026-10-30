@@ -1,5 +1,9 @@
 [workflow]
 protected_paths = [".policy/**", ".github/**", ".githooks/**", "pyproject.toml"]
+commit_types = ["fix", "refactor", "docs", "chore", "build", "ci", "perf", "style"]
+# policy(<target>): <summary> commits may change protected_paths (and nothing else)
+# if the message body contains a "Reason: <why>" line.
+policy_commit_type = "policy"
 checks = [
     "uv run ruff check .",
     "uv run ruff format --check .",
@@ -34,9 +38,11 @@ checks = [
     "uv run symbol --config .policy/symbols.toml",
     "uv run architecture --config .policy/arch.toml",
     "uv run trace-check .policy/traceability.toml",
-    "uv run pytest --collect-only -q",
 ]
 fail_checks = ["uv run pytest -q"]
+# 1 = tests failed, 2 = collection error (e.g. importing a not-yet-implemented symbol).
+# Syntax errors are rejected earlier by `ruff check tests/`.
+fail_exit_codes = [1, 2]
 prompt = "Write failing pytest test(s) decorated with @trace('{target}') in tests/."
 
 [[stages]]
