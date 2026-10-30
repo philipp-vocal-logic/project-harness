@@ -1,0 +1,66 @@
+[workflow]
+protected_paths = [".policy/**", ".github/**", ".githooks/**", "pyproject.toml"]
+checks = [
+    "uv run ruff check .",
+    "uv run ruff format --check .",
+    "uv run glossary --config .policy/glossary.toml",
+    "uv run symbol --config .policy/symbols.toml",
+    "uv run architecture --config .policy/arch.toml",
+    "uv run trace-check .policy/traceability.toml",
+    "uv run pytest -q",
+]
+
+[orchestrator]
+max_retries = 3
+agent_command = ["agy", "--print", "{prompt}"]
+
+[[stages]]
+id = "planner"
+commit_prefix = "plan"
+allow_write = ["trace/**/*.toml"]
+checks = [
+    "uv run glossary --config .policy/glossary.toml",
+    "uv run trace-check .policy/traceability.toml",
+]
+prompt = "Create or update DRAFT traceability nodes in trace/ for {target}."
+
+[[stages]]
+id = "red-test"
+commit_prefix = "test"
+allow_write = ["tests/**/*.py"]
+checks = [
+    "uv run ruff check tests/",
+    "uv run glossary --config .policy/glossary.toml",
+    "uv run symbol --config .policy/symbols.toml",
+    "uv run architecture --config .policy/arch.toml",
+    "uv run trace-check .policy/traceability.toml",
+    "uv run pytest --collect-only -q",
+]
+fail_checks = ["uv run pytest -q"]
+prompt = "Write failing pytest test(s) decorated with @trace('{target}') in tests/."
+
+[[stages]]
+id = "implementer"
+commit_prefix = "feat"
+allow_write = ["src/**/*.py"]
+checks = [
+    "uv run ruff check .",
+    "uv run ruff format --check .",
+    "uv run glossary --config .policy/glossary.toml",
+    "uv run symbol --config .policy/symbols.toml",
+    "uv run architecture --config .policy/arch.toml",
+    "uv run trace-check .policy/traceability.toml",
+    "uv run pytest -q",
+]
+prompt = "Implement minimal code in src/ so all tests pass without modifying tests/."
+
+[[stages]]
+id = "reviewer"
+commit_prefix = "review"
+allow_write = ["trace/**/*.toml"]
+checks = [
+    "uv run glossary --config .policy/glossary.toml",
+    "uv run trace-check .policy/traceability.toml",
+    "uv run pytest -q",
+]
+prompt = "Review diff against {target}; set status = 'APPROVED' in trace/."

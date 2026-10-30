@@ -1,0 +1,41 @@
+[settings]
+paths = ["src", "tests", "trace", "README.md", ".policy/workflow.toml", ".policy/traceability.toml", ".policy/arch.toml", "pyproject.toml"]
+exclude = [
+    ".git/",
+    ".venv/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    "__pycache__/",
+    "*.egg-info/",
+    ".policy/glossary.toml",
+    ".policy/symbols.toml",
+    "glossary.toml",
+    "symbols.toml",
+    "uv.lock",
+]
+similarity_threshold = 0.65
+
+[[terms]]
+term = "policy"
+definition = "A declarative project rule file stored inside the .policy directory."
+forbidden_terms = ["convention", "guideline", "charter"]
+
+[[terms]]
+term = "workflow"
+definition = "An ordered sequence of git TDD development stages and merge checks."
+forbidden_terms = ["playbook", "runbook", "tier_list"]
+
+[[terms]]
+term = "stage"
+definition = "A single step in the workflow bound to a commit prefix, write globs, and shell commands."
+forbidden_terms = ["phase", "milestone", "lifecycle_state"]
+
+[[terms]]
+term = "orchestrator"
+definition = "The automated runner that invokes an agent subprocess per stage and commits passing changes."
+forbidden_terms = ["supervisor", "coordinator", "dispatcher"]
+
+[[terms]]
+term = "violation"
+definition = "A diagnostic line emitted when a file scope, commit history, or command check fails."
+forbidden_terms = ["offense", "infringement", "breach"]
