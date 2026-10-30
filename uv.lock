@@ -140,7 +140,7 @@ wheels = [
 [[package]]
 name = "symbol-checker-cli"
 version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/symbol-checker-cli.git?branch=main#80b203fccf5d8251df600f6df7bdbf30f4533f1a" }
+source = { git = "https://github.com/philipp-vocal-logic/symbol-checker-cli.git?branch=main#81b1734d5b068ec4c5e6c1645b21bc292a4e5133" }
 dependencies = [
     { name = "pathspec" },
 ]
@@ -148,4 +148,4 @@ dependencies = [
 [[package]]
 name = "trace-check"
 version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/tracability-checker-cli.git?branch=main#c5ca31501d5fe28da9da12dd53bf0bcb16985026" }
+source = { git = "https://github.com/philipp-vocal-logic/tracability-checker-cli.git?branch=main#3d260fc7068a3a3c711abfdb03b1760715dde5e2" }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -17,6 +18,12 @@ from project_harness.model import (
     check_policy_commit,
     is_git_generated,
     parse_subject,
+)
+
+FAILURE_LINE_PATTERN = re.compile(
+    r"^(?:FAILED |ERROR |error(?:\[E\d+\])?:|test .+ \.\.\. FAILED"
+    r"|thread '.+' panicked at|\[\s*FAILED\s*\])"
+    r"|:\s*(?:fatal )?error:|Assertion .* failed"
 )
 
 
@@ -59,9 +66,10 @@ def _run_single_check(
     completed = subprocess.run(args, cwd=root, capture_output=True, text=True, check=False)
     if completed.returncode in expected:
         return None
-    lines = (completed.stdout.strip() or completed.stderr.strip()).splitlines()
+    raw_lines = f"{completed.stdout}\n{completed.stderr}".splitlines()
+    lines = [line.strip() for line in raw_lines if line.strip()]
     detail = next(
-        (line for line in lines if line.startswith(("FAILED ", "ERROR "))),
+        (line for line in lines if FAILURE_LINE_PATTERN.search(line)),
         lines[0] if lines else f"exit code {completed.returncode}",
     )
     if expected == (0,):

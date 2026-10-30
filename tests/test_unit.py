@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ from trace_check import trace
 
 from project_harness.cli import main
 from project_harness.config import load_workflow
-from project_harness.core import materialize_policy_files
+from project_harness.core import materialize_policy_files, run_commands
 from project_harness.model import (
     CommitHeader,
     Stage,
@@ -185,3 +186,61 @@ def test_cli_returns_exit_2_on_missing_config(
     code = main(["--config", str(tmp_path / "missing.toml"), "check"])
     assert code == 2
     assert "[ERR_CONFIG]" in capsys.readouterr().err
+
+
+@trace("REQ-STAGE")
+@pytest.mark.parametrize(
+    ("stdout_text", "stderr_text", "expected_detail"),
+    [
+        pytest.param(
+            "Compiling app v0.1.0\n",
+            "error[E0425]: cannot find value `missing_fn` in this scope\n",
+            "error[E0425]: cannot find value `missing_fn` in this scope",
+            id="rust_cargo_compile_error_on_stderr",
+        ),
+        pytest.param(
+            "running 1 test\ntest tests::multiply_works ... FAILED\n",
+            "thread 'tests::multiply_works' panicked at 'assertion failed'\n",
+            "test tests::multiply_works ... FAILED",
+            id="rust_cargo_test_failure_line",
+        ),
+        pytest.param(
+            "[==========] Running 1 test\n[  FAILED  ] CalcSuite.MultiplyCase (0 ms)\n",
+            "",
+            "[  FAILED  ] CalcSuite.MultiplyCase (0 ms)",
+            id="cpp_gtest_failure_line",
+        ),
+        pytest.param(
+            "Building C object\n",
+            "tests/test_calc.c:12:5: error: implicit declaration of function 'multiply'\n",
+            "tests/test_calc.c:12:5: error: implicit declaration of function 'multiply'",
+            id="ansi_c_gcc_diagnostic_on_stderr",
+        ),
+        pytest.param(
+            "",
+            "test_runner: test_calc.c:8: Assertion `multiply(3, 4) == 12' failed.\n",
+            "test_runner: test_calc.c:8: Assertion `multiply(3, 4) == 12' failed.",
+            id="ansi_c_assert_failure_on_stderr",
+        ),
+        pytest.param(
+            "",
+            "",
+            "exit code 1",
+            id="empty_stdout_and_stderr_fallback_edge",
+        ),
+    ],
+)
+def test_run_commands_extracts_compiler_and_test_failure_details(
+    tmp_path: Path, stdout_text: str, stderr_text: str, expected_detail: str
+) -> None:
+    script = tmp_path / "emit_diag.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.stdout.write({stdout_text!r})\n"
+        f"sys.stderr.write({stderr_text!r})\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    cmd = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
+    violations = run_commands(tmp_path, [cmd])
+    assert violations == [f"{cmd} [ERR_CHECK]: {expected_detail}"]
