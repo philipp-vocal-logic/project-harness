@@ -8,7 +8,8 @@ import pytest
 from trace_check import trace
 
 from project_harness.cli import main
-from project_harness.core import load_workflow, materialize_policy_files
+from project_harness.config import load_workflow
+from project_harness.core import materialize_policy_files
 from project_harness.model import (
     CommitHeader,
     Stage,
@@ -53,6 +54,8 @@ def test_matches_glob_and_matches_any(rel_path: str, pattern: str, expected: boo
         ("invalid commit message", None),
         ("Plan(REQ-1): uppercase prefix not allowed", None),
         ("plan(): missing target", None),
+        ("docs: no target", CommitHeader("docs", None, "no target")),
+        ("feat(core)!: breaking change", CommitHeader("feat", "core", "breaking change")),
     ],
 )
 def test_parse_subject(subject: str, expected: CommitHeader | None) -> None:
@@ -108,6 +111,21 @@ def test_check_paths_scope_reports_protected_and_out_of_scope_files() -> None:
             '[orchestrator]\nagent_command = ["echo"]\nmax_retries = 0\n'
             '[[stages]]\nid = "s"\ncommit_prefix = "p"\nallow_write = ["src/**"]\n',
             "max_retries must be a positive integer",
+        ),
+        (
+            '[workflow]\ncommit_types = ["p"]\n'
+            '[[stages]]\nid = "s"\ncommit_prefix = "p"\nallow_write = ["src/**"]\n',
+            "'p' is a stage commit_prefix",
+        ),
+        (
+            '[workflow]\ncommit_types = ["Fix"]\n'
+            '[[stages]]\nid = "s"\ncommit_prefix = "p"\nallow_write = ["src/**"]\n',
+            "invalid commit type 'Fix'",
+        ),
+        (
+            '[[stages]]\nid = "s"\ncommit_prefix = "p"\nallow_write = ["src/**"]\n'
+            "fail_exit_codes = [0]\n",
+            "must be a non-empty list of exit codes",
         ),
     ],
 )

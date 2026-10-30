@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
 
-COMMIT_PATTERN = re.compile(r"^([a-z][a-z0-9_-]*)\(([A-Za-z0-9_.-]+)\): (.+)$")
+COMMIT_PATTERN = re.compile(r"^([a-z][a-z0-9_-]*)(?:\(([A-Za-z0-9_.-]+)\))?!?: (.+)$")
+GIT_GENERATED_PATTERN = re.compile(r"^(Merge|Revert) ")
 MAX_SUBJECT_LENGTH = 72
 
 
@@ -22,6 +23,7 @@ class Stage:
     checks: tuple[str, ...] = ()
     fail_checks: tuple[str, ...] = ()
     prompt: str = ""
+    fail_exit_codes: tuple[int, ...] = (1,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +42,7 @@ class Workflow:
     checks: tuple[str, ...]
     stages: tuple[Stage, ...]
     orchestrator: Orchestrator | None = None
+    commit_types: tuple[str, ...] = ()
 
     def stage_by_id(self, stage_id: str) -> Stage | None:
         """Return the configured stage with the given id, or None."""
@@ -52,10 +55,10 @@ class Workflow:
 
 @dataclass(frozen=True, slots=True)
 class CommitHeader:
-    """Parsed commit subject matching <prefix>(<target>): <summary>."""
+    """Parsed commit subject matching <prefix>[(<target>)][!]: <summary>."""
 
     prefix: str
-    target: str
+    target: str | None
     summary: str
 
 
@@ -86,7 +89,10 @@ def matches_any(rel_path: str, patterns: Sequence[str]) -> bool:
 
 
 def parse_subject(subject: str) -> CommitHeader | None:
-    """Parse a commit subject line into CommitHeader if valid and <= 72 chars."""
+    """Parse a commit subject line into CommitHeader if valid and <= 72 chars.
+
+    The (<target>) part is optional here; stage commits enforce it separately.
+    """
     line = subject.strip()
     if len(line) > MAX_SUBJECT_LENGTH:
         return None
@@ -94,6 +100,22 @@ def parse_subject(subject: str) -> CommitHeader | None:
     if not match:
         return None
     return CommitHeader(match.group(1), match.group(2), match.group(3))
+
+
+def is_git_generated(subject: str) -> bool:
+    """Return True for subjects git creates itself (Merge ..., Revert ...)."""
+    return GIT_GENERATED_PATTERN.match(subject.strip()) is not None
+
+
+def check_paths_protected(
+    paths: Sequence[str], protected_paths: Sequence[str], label: str = "working-tree"
+) -> list[str]:
+    """Report modified paths that match protected_paths."""
+    return [
+        f"{label}: {rel_path} [ERR_PROTECTED]: path is protected by policy"
+        for rel_path in sorted(set(paths))
+        if matches_any(rel_path, protected_paths)
+    ]
 
 
 def check_paths_scope(

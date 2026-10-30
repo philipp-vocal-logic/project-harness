@@ -15,6 +15,7 @@ PYTHON_BIN = sys.executable
 
 WORKFLOW_TOML = f"""[workflow]
 protected_paths = [".policy/**"]
+commit_types = ["chore", "docs"]
 checks = ["{PYTHON_BIN} -m pytest -q"]
 
 [[stages]]
@@ -27,8 +28,9 @@ checks = []
 id = "red-test"
 commit_prefix = "test"
 allow_write = ["tests/**/*.py"]
-checks = ["{PYTHON_BIN} -m pytest --collect-only -q"]
+checks = ["{PYTHON_BIN} -m ruff check --no-cache --select E9 tests"]
 fail_checks = ["{PYTHON_BIN} -m pytest -q"]
+fail_exit_codes = [1, 2]
 
 [[stages]]
 id = "implementer"
@@ -94,10 +96,10 @@ def test_red_test_stage_requires_failing_test_and_rejects_passing_or_broken_test
     assert main(["--config", str(cfg), "check", "--stage", "red-test"]) == 1
     assert "[ERR_RED_CHECK]" in capsys.readouterr().out
 
-    # 2. Syntax error in red-test stage must be rejected by collect-only / ERR_CHECK
+    # 2. Syntax error in red-test stage must be rejected by ruff / ERR_CHECK
     test_file.write_text("def test_broken(:\n", encoding="utf-8")
     assert main(["--config", str(cfg), "check", "--stage", "red-test"]) == 1
-    assert "[ERR_CHECK]: ERROR " in capsys.readouterr().out
+    assert "ruff check --no-cache --select E9 tests [ERR_CHECK]" in capsys.readouterr().out
 
     # 3. Genuinely failing test in red-test stage passes (exit 0)
     test_file.write_text(
@@ -145,3 +147,86 @@ def test_merge_check_rejects_skipped_stages_and_tampered_tests(
     assert main(["--config", str(cfg), "check", "--base", "main"]) == 1
     out = capsys.readouterr().out
     assert "[ERR_SCOPE] (implementer)" in out
+
+
+@trace("REQ-STAGE")
+def test_red_test_stage_accepts_collection_error_for_unimplemented_symbol(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = init_git_repo(tmp_path)
+    (tmp_path / "tests" / "test_calc.py").write_text(
+        "from src.calc import subtract\n\n"
+        "def test_subtract() -> None:\n    assert subtract(5, 3) == 2\n",
+        encoding="utf-8",
+    )
+    # pytest exits 2 (collection error); fail_exit_codes = [1, 2] accepts it as red
+    assert main(["--config", str(cfg), "check", "--stage", "red-test"]) == 0
+    assert capsys.readouterr().out == ""
+
+
+@trace("REQ-STAGE")
+def test_commit_msg_check_runs_workflow_checks_for_non_stage_commit_types(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = init_git_repo(tmp_path)
+    msg_file = tmp_path / "COMMIT_EDITMSG"
+    (tmp_path / "tests" / "test_ok.py").write_text("def test_ok() -> None:\n    assert True\n")
+    git_run(tmp_path, "add", "-A")
+
+    for subject, expected in [
+        ("docs: describe usage", 0),
+        ("Merge branch 'side'", 0),
+        ("fix(core): not in commit_types", 1),
+        ("plan: stage commit without target", 1),
+    ]:
+        msg_file.write_text(subject + "\n", encoding="utf-8")
+        assert main(["--config", str(cfg), "check", "--commit-msg", str(msg_file)]) == expected
+    assert "[ERR_COMMIT_MSG]" in capsys.readouterr().out
+
+    (tmp_path / ".policy" / "workflow.toml").write_text(WORKFLOW_TOML + "\n")
+    git_run(tmp_path, "add", "-A")
+    msg_file.write_text("chore(policy): sneak policy change\n", encoding="utf-8")
+    assert main(["--config", str(cfg), "check", "--commit-msg", str(msg_file)]) == 1
+    assert "[ERR_PROTECTED]" in capsys.readouterr().out
+
+
+def _commit_file(repo: Path, rel_path: str, text: str, subject: str) -> None:
+    (repo / rel_path).parent.mkdir(parents=True, exist_ok=True)
+    (repo / rel_path).write_text(text, encoding="utf-8")
+    git_run(repo, "add", "-A")
+    git_run(repo, "commit", "-m", subject)
+
+
+@trace("REQ-MERGE")
+def test_merge_check_allows_non_stage_and_merge_commits(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = init_git_repo(tmp_path)
+    git_run(tmp_path, "checkout", "-b", "side")
+    _commit_file(tmp_path, "NOTES.md", "notes\n", "docs: add notes")
+    smoke = "def test_smoke() -> None:\n    assert True\n"
+    _commit_file(tmp_path, "tests/test_smoke.py", smoke, "chore(tests): add smoke test")
+    git_run(tmp_path, "checkout", "-b", "feat/req-1", "main")
+    _commit_file(tmp_path, "trace/REQ-1.toml", 'status = "DRAFT"\n', "plan(REQ-1): plan")
+    _commit_file(
+        tmp_path,
+        "tests/test_calc.py",
+        "from src.calc import add\ndef test_add() -> None:\n    assert add(2, 3) == 5\n",
+        "test(REQ-1): red test",
+    )
+    _commit_file(tmp_path, "README.md", "readme\n", "chore(readme): add readme")
+    git_run(tmp_path, "merge", "--no-ff", "-m", "Merge branch 'side'", "side")
+    impl = "def add(a: int, b: int) -> int:\n    return a + b\n"
+    _commit_file(tmp_path, "src/calc.py", impl, "feat(REQ-1): implement add")
+    _commit_file(tmp_path, "trace/REQ-1.toml", 'status = "APPROVED"\n', "review(REQ-1): ok")
+    assert main(["--config", str(cfg), "check", "--base", "main"]) == 0
+
+    # Branch with only non-stage commits needs no stage sequence
+    git_run(tmp_path, "checkout", "side")
+    assert main(["--config", str(cfg), "check", "--base", "main"]) == 0
+
+    # Non-stage commits must not touch protected paths
+    git_run(tmp_path, "checkout", "-b", "chore/policy", "main")
+    _commit_file(tmp_path, ".policy/workflow.toml", WORKFLOW_TOML + "\n", "chore: edit policy")
+    assert main(["--config", str(cfg), "check", "--base", "main"]) == 1
+    assert "[ERR_PROTECTED]" in capsys.readouterr().out

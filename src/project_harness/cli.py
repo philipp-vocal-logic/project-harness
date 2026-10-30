@@ -7,12 +7,12 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from project_harness.config import load_workflow
 from project_harness.core import (
     Workflow,
     check_commit_file,
     check_merge,
     check_stage,
-    load_workflow,
     run_commands,
     run_workflow,
 )

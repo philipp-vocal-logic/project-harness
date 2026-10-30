@@ -1,4 +1,4 @@
-"""Configuration loading, stage/merge checks, and orchestrator loop for project-harness."""
+"""Stage/merge checks, command execution, and orchestrator loop for project-harness."""
 
 from __future__ import annotations
 
@@ -6,122 +6,17 @@ import contextlib
 import shlex
 import shutil
 import subprocess
-import tomllib
 from collections.abc import Iterator, Sequence
-from pathlib import Path, PurePosixPath
-from typing import Any
+from pathlib import Path
 
 from project_harness.model import (
-    Orchestrator,
     Stage,
     Workflow,
+    check_paths_protected,
     check_paths_scope,
+    is_git_generated,
     parse_subject,
 )
-
-ALLOWED_ROOT_KEYS = frozenset({"workflow", "orchestrator", "stages"})
-ALLOWED_WORKFLOW_KEYS = frozenset({"protected_paths", "checks"})
-ALLOWED_ORCHESTRATOR_KEYS = frozenset({"agent_command", "max_retries"})
-ALLOWED_STAGE_KEYS = frozenset(
-    {"id", "commit_prefix", "allow_write", "checks", "fail_checks", "prompt"}
-)
-
-
-def _require_table(raw_table: Any, scope: str) -> dict[str, Any]:
-    if isinstance(raw_table, dict):
-        return raw_table
-    raise ValueError(f"'{scope}' must be a table")
-
-
-def _check_keys(table: dict[str, Any], allowed: frozenset[str], scope: str) -> None:
-    unknown = sorted(set(table) - allowed)
-    if unknown:
-        raise ValueError(f"unknown keys in {scope}: {unknown}")
-
-
-def _require_str(table: dict[str, Any], key: str, scope: str) -> str:
-    field = table.get(key)
-    if isinstance(field, str) and field.strip():
-        return field.strip()
-    raise ValueError(f"{scope}: missing or invalid '{key}'")
-
-
-def _str_tuple(raw_list: Any, label: str, *, allow_empty: bool = True) -> tuple[str, ...]:
-    if not isinstance(raw_list, list) or not all(
-        isinstance(part, str) and part.strip() for part in raw_list
-    ):
-        raise ValueError(f"'{label}' must be a list of non-empty strings")
-    if not allow_empty and not raw_list:
-        raise ValueError(f"'{label}' must not be empty")
-    return tuple(part.strip() for part in raw_list)
-
-
-def _glob_tuple(raw_list: Any, label: str, *, allow_empty: bool = False) -> tuple[str, ...]:
-    patterns = _str_tuple(raw_list, label, allow_empty=allow_empty)
-    for pattern in patterns:
-        posix = PurePosixPath(pattern)
-        if posix.is_absolute() or ".." in posix.parts:
-            raise ValueError(f"{label}: glob must be a relative path pattern: '{pattern}'")
-    return patterns
-
-
-def _parse_stage(raw_stage: Any) -> Stage:
-    table = _require_table(raw_stage, "stage")
-    _check_keys(table, ALLOWED_STAGE_KEYS, "stage")
-    stage_id = _require_str(table, "id", "stage")
-    scope = f"stage '{stage_id}'"
-    prefix = _require_str(table, "commit_prefix", scope)
-    allow_write = _glob_tuple(table.get("allow_write"), f"{scope}.allow_write")
-    checks = _str_tuple(table.get("checks", []), f"{scope}.checks")
-    fail_checks = _str_tuple(table.get("fail_checks", []), f"{scope}.fail_checks")
-    prompt = _require_str(table, "prompt", scope) if "prompt" in table else ""
-    return Stage(stage_id, prefix, allow_write, checks, fail_checks, prompt)
-
-
-def _parse_stages(raw_stages: Any) -> tuple[Stage, ...]:
-    if not isinstance(raw_stages, list) or not raw_stages:
-        raise ValueError("'stages' must be a non-empty list of tables")
-    stages: list[Stage] = []
-    seen_ids: set[str] = set()
-    seen_prefixes: set[str] = set()
-    for raw_stage in raw_stages:
-        stage = _parse_stage(raw_stage)
-        if stage.id in seen_ids:
-            raise ValueError(f"duplicate stage id '{stage.id}'")
-        if stage.commit_prefix in seen_prefixes:
-            raise ValueError(f"duplicate stage commit_prefix '{stage.commit_prefix}'")
-        seen_ids.add(stage.id)
-        seen_prefixes.add(stage.commit_prefix)
-        stages.append(stage)
-    return tuple(stages)
-
-
-def _parse_orchestrator(raw_orch: Any) -> Orchestrator | None:
-    if raw_orch is None:
-        return None
-    table = _require_table(raw_orch, "orchestrator")
-    _check_keys(table, ALLOWED_ORCHESTRATOR_KEYS, "orchestrator")
-    cmd = _str_tuple(table.get("agent_command"), "orchestrator.agent_command", allow_empty=False)
-    retries = table.get("max_retries", 3)
-    if isinstance(retries, bool) or not isinstance(retries, int) or retries < 1:
-        raise ValueError("orchestrator.max_retries must be a positive integer")
-    return Orchestrator(cmd, retries)
-
-
-def load_workflow(path: Path) -> Workflow:
-    """Load and validate a .policy/workflow.toml file."""
-    with path.open("rb") as handle:
-        raw = tomllib.load(handle)
-    _check_keys(raw, ALLOWED_ROOT_KEYS, "workflow.toml")
-    wf_table = _require_table(raw.get("workflow", {}), "workflow")
-    _check_keys(wf_table, ALLOWED_WORKFLOW_KEYS, "workflow")
-    protected = _glob_tuple(
-        wf_table.get("protected_paths", []), "workflow.protected_paths", allow_empty=True
-    )
-    checks = _str_tuple(wf_table.get("checks", []), "workflow.checks")
-    stages = _parse_stages(raw.get("stages"))
-    orchestrator = _parse_orchestrator(raw.get("orchestrator"))
-    return Workflow(protected, checks, stages, orchestrator)
 
 
 @contextlib.contextmanager
@@ -157,31 +52,39 @@ def _normalize_command(command: str, materialized: frozenset[str]) -> list[str]:
 
 
 def _run_single_check(
-    root: Path, command: str, materialized: frozenset[str], *, expect_fail: bool = False
+    root: Path, command: str, materialized: frozenset[str], expected: tuple[int, ...] = (0,)
 ) -> str | None:
     args = _normalize_command(command, materialized)
     completed = subprocess.run(args, cwd=root, capture_output=True, text=True, check=False)
-    if completed.returncode == (1 if expect_fail else 0):
+    if completed.returncode in expected:
         return None
     lines = (completed.stdout.strip() or completed.stderr.strip()).splitlines()
     detail = next(
         (line for line in lines if line.startswith(("FAILED ", "ERROR "))),
         lines[0] if lines else f"exit code {completed.returncode}",
     )
-    if not expect_fail:
+    if expected == (0,):
         return f"{command} [ERR_CHECK]: {detail}"
-    return f"{command} [ERR_RED_CHECK]: expected exit 1, got exit {completed.returncode}: {detail}"
+    return (
+        f"{command} [ERR_RED_CHECK]: expected exit in {list(expected)}, "
+        f"got exit {completed.returncode}: {detail}"
+    )
 
 
-def run_commands(root: Path, checks: Sequence[str], fail_checks: Sequence[str] = ()) -> list[str]:
-    """Execute configured check and fail_check commands against root."""
+def run_commands(
+    root: Path,
+    checks: Sequence[str],
+    fail_checks: Sequence[str] = (),
+    fail_exit_codes: tuple[int, ...] = (1,),
+) -> list[str]:
+    """Execute check commands (must exit 0) and fail_check commands (must exit fail_exit_codes)."""
     violations: list[str] = []
     with materialize_policy_files(root) as materialized:
         for command in checks:
             if violation := _run_single_check(root, command, materialized):
                 violations.append(violation)
         for command in fail_checks:
-            if violation := _run_single_check(root, command, materialized, expect_fail=True):
+            if violation := _run_single_check(root, command, materialized, fail_exit_codes):
                 violations.append(violation)
     return violations
 
@@ -219,23 +122,44 @@ def check_stage(
     scope_violations = check_paths_scope(paths, stage, workflow.protected_paths)
     if scope_violations:
         return scope_violations
-    return run_commands(root, stage.checks, stage.fail_checks)
+    return run_commands(root, stage.checks, stage.fail_checks, stage.fail_exit_codes)
+
+
+def _classify_subject(
+    workflow: Workflow, subject: str, label: str
+) -> tuple[Stage | None, list[str]]:
+    """Return (stage, []) for stage commits, (None, []) for allowed non-stage commits."""
+    if is_git_generated(subject):
+        return None, []
+    header = parse_subject(subject)
+    if header is None:
+        return None, [
+            f"{label} [ERR_COMMIT_MSG]: invalid subject '{subject}'; "
+            "expected <type>(<target>): <summary> (<= 72 chars)"
+        ]
+    stage = workflow.stage_by_prefix(header.prefix)
+    if stage is not None and header.target is None:
+        return None, [f"{label} [ERR_COMMIT_MSG]: stage commit '{subject}' requires (<target>)"]
+    if stage is None and header.prefix not in workflow.commit_types:
+        return None, [f"{label} [ERR_COMMIT_MSG]: unknown commit type '{header.prefix}'"]
+    return stage, []
 
 
 def check_commit_file(root: Path, workflow: Workflow, msg_file: Path) -> list[str]:
     """Validate commit message file and run the corresponding stage checks on staged files."""
     lines = msg_file.read_text(encoding="utf-8").splitlines()
     subject = lines[0].strip() if lines else ""
-    header = parse_subject(subject)
-    if header is None:
-        return [
-            f"{msg_file} [ERR_COMMIT_MSG]: invalid subject '{subject}'; "
-            "expected <prefix>(<target>): <summary> (<= 72 chars)"
-        ]
-    stage = workflow.stage_by_prefix(header.prefix)
-    if stage is None:
-        return [f"{msg_file} [ERR_COMMIT_MSG]: unknown stage prefix '{header.prefix}'"]
-    return check_stage(root, workflow, stage.id, staged_only=True)
+    if is_git_generated(subject):
+        return []
+    stage, violations = _classify_subject(workflow, subject, str(msg_file))
+    if violations:
+        return violations
+    if stage is not None:
+        return check_stage(root, workflow, stage.id, staged_only=True)
+    staged = changed_working_paths(root, staged_only=True)
+    return check_paths_protected(staged, workflow.protected_paths) or run_commands(
+        root, workflow.checks
+    )
 
 
 def _check_single_commit(
@@ -243,21 +167,27 @@ def _check_single_commit(
 ) -> tuple[str | None, list[str]]:
     sha, _, subject = commit_line.partition(" ")
     short_sha = sha[:7]
-    header = parse_subject(subject)
-    if header is None:
-        return None, [f"{short_sha} [ERR_COMMIT_MSG]: invalid commit subject '{subject}'"]
-    stage = workflow.stage_by_prefix(header.prefix)
-    if stage is None:
-        return None, [f"{short_sha} [ERR_COMMIT_MSG]: unknown stage prefix '{header.prefix}'"]
+    stage, violations = _classify_subject(workflow, subject, short_sha)
+    if violations:
+        return None, violations
     files = _git_lines(root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha)
+    if stage is None:
+        return None, check_paths_protected(files, workflow.protected_paths, label=short_sha)
     return stage.id, check_paths_scope(files, stage, workflow.protected_paths, label=short_sha)
 
 
 def check_merge(root: Path, workflow: Workflow, base_ref: str) -> list[str]:
-    """Verify clean tree, stage commit sequence and scopes in base_ref..HEAD, and merge checks."""
+    """Verify clean tree, commit types, stage sequence and scopes in base_ref..HEAD, and checks.
+
+    Merge commits are skipped. Allowed non-stage commits (workflow.commit_types, Revert) are
+    only checked against protected_paths. If the branch has any stage commit, the stage
+    commits must form the full configured stage sequence.
+    """
     if changed_working_paths(root):
         return ["working-tree [ERR_DIRTY]: uncommitted changes present"]
-    commit_lines = _git_lines(root, "log", "--reverse", "--format=%H %s", f"{base_ref}..HEAD")
+    commit_lines = _git_lines(
+        root, "log", "--reverse", "--no-merges", "--format=%H %s", f"{base_ref}..HEAD"
+    )
     if not commit_lines:
         return [f"{base_ref}..HEAD [ERR_HISTORY]: no commits ahead of {base_ref}"]
     seen_stages: list[str] = []
@@ -268,7 +198,7 @@ def check_merge(root: Path, workflow: Workflow, base_ref: str) -> list[str]:
         if stage_id is not None and (not seen_stages or seen_stages[-1] != stage_id):
             seen_stages.append(stage_id)
     expected = [stage.id for stage in workflow.stages]
-    if not violations and seen_stages != expected:
+    if not violations and seen_stages and seen_stages != expected:
         violations.append(
             f"{base_ref}..HEAD [ERR_HISTORY]: stage sequence {seen_stages} != expected {expected}"
         )

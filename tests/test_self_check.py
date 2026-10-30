@@ -12,7 +12,8 @@ from symbol_checker.schema import load_schema
 from trace_check import trace
 from trace_check.checker import check_config, load_config
 
-from project_harness.core import load_workflow, materialize_policy_files
+from project_harness.config import load_workflow
+from project_harness.core import materialize_policy_files
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
