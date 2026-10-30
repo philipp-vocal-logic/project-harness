@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "project-harness"
+version = "0.1.0"
+description = "Minimal CLI project harness enforcing .policy rules and configurable Git TDD workflows."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/philipp-vocal-logic/project-harness"
+
+[project.scripts]
+harness = "project_harness.cli:main"
+
+[dependency-groups]
+dev = [
+    "archcheck",
+    "glossary-checker-cli",
+    "pytest>=8.0",
+    "ruff>=0.8",
+    "symbol-checker-cli",
+    "trace-check",
+]
+
+[tool.uv.sources]
+archcheck = { git = "https://github.com/philipp-vocal-logic/architecture-checker-cli.git", branch = "main" }
+glossary-checker-cli = { git = "https://github.com/philipp-vocal-logic/glossary-checker-cli.git", branch = "main" }
+symbol-checker-cli = { git = "https://github.com/philipp-vocal-logic/symbol-checker-cli.git", branch = "main" }
+trace-check = { git = "https://github.com/philipp-vocal-logic/tracability-checker-cli.git", branch = "main" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C90", "RUF"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 6
