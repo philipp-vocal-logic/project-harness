@@ -16,6 +16,7 @@ PYTHON_BIN = sys.executable
 WORKFLOW_TOML = f"""[workflow]
 protected_paths = [".policy/**"]
 commit_types = ["chore", "docs"]
+policy_commit_type = "policy"
 checks = ["{PYTHON_BIN} -m pytest -q"]
 
 [[stages]]
@@ -230,3 +231,34 @@ def test_merge_check_allows_non_stage_and_merge_commits(
     _commit_file(tmp_path, ".policy/workflow.toml", WORKFLOW_TOML + "\n", "chore: edit policy")
     assert main(["--config", str(cfg), "check", "--base", "main"]) == 1
     assert "[ERR_PROTECTED]" in capsys.readouterr().out
+
+
+@trace("REQ-POLICY")
+def test_policy_commit_updates_protected_paths_with_reason(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = init_git_repo(tmp_path)
+    _commit_file(tmp_path, "tests/test_ok.py", "def test_ok() -> None:\n    pass\n", "chore: ok")
+    git_run(tmp_path, "checkout", "-b", "policy/update")
+    (tmp_path / ".policy" / "workflow.toml").write_text(WORKFLOW_TOML + "\n")
+    git_run(tmp_path, "add", "-A")
+    msg_file = tmp_path / ".git" / "COMMIT_EDITMSG"
+
+    msg_file.write_text("policy(workflow): tweak\n", encoding="utf-8")
+    assert main(["--config", str(cfg), "check", "--commit-msg", str(msg_file)]) == 1
+    assert "[ERR_POLICY_REASON]" in capsys.readouterr().out
+
+    message = "policy(workflow): tweak\n\nReason: keep config tidy\n# comment\n"
+    msg_file.write_text(message, encoding="utf-8")
+    assert main(["--config", str(cfg), "check", "--commit-msg", str(msg_file)]) == 0
+
+    # Mixing non-protected paths into a policy commit is rejected
+    (tmp_path / "src" / "calc.py").write_text("def add(a: int, b: int) -> int:\n    return 1\n")
+    git_run(tmp_path, "add", "-A")
+    assert main(["--config", str(cfg), "check", "--commit-msg", str(msg_file)]) == 1
+    assert "src/calc.py [ERR_SCOPE] (policy)" in capsys.readouterr().out
+
+    git_run(tmp_path, "reset", "-q", "src/calc.py")
+    git_run(tmp_path, "checkout", "--", "src/calc.py")
+    git_run(tmp_path, "commit", "-q", "-F", str(msg_file))
+    assert main(["--config", str(cfg), "check", "--base", "main"]) == 0

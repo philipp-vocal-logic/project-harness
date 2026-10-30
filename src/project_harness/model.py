@@ -10,6 +10,7 @@ from pathlib import PurePosixPath
 
 COMMIT_PATTERN = re.compile(r"^([a-z][a-z0-9_-]*)(?:\(([A-Za-z0-9_.-]+)\))?!?: (.+)$")
 GIT_GENERATED_PATTERN = re.compile(r"^(Merge|Revert) ")
+REASON_PATTERN = re.compile(r"^Reason:[ \t]*\S")
 MAX_SUBJECT_LENGTH = 72
 
 
@@ -43,6 +44,7 @@ class Workflow:
     stages: tuple[Stage, ...]
     orchestrator: Orchestrator | None = None
     commit_types: tuple[str, ...] = ()
+    policy_commit_type: str = ""
 
     def stage_by_id(self, stage_id: str) -> Stage | None:
         """Return the configured stage with the given id, or None."""
@@ -118,20 +120,28 @@ def check_paths_protected(
     ]
 
 
+def check_policy_commit(
+    paths: Sequence[str], message: str, protected_paths: Sequence[str], label: str = "working-tree"
+) -> list[str]:
+    """Check that a policy commit only touches protected_paths and has a 'Reason: <why>' line."""
+    violations = [
+        f"{label}: {rel_path} [ERR_SCOPE] (policy): path outside protected_paths"
+        for rel_path in sorted(set(paths))
+        if not matches_any(rel_path, protected_paths)
+    ]
+    if not any(REASON_PATTERN.match(line) for line in message.splitlines()):
+        violations.append(f"{label} [ERR_POLICY_REASON]: missing 'Reason: <why>' line")
+    return violations
+
+
 def check_paths_scope(
-    paths: Sequence[str],
-    stage: Stage,
-    protected_paths: Sequence[str],
-    label: str = "working-tree",
+    paths: Sequence[str], stage: Stage, protected_paths: Sequence[str], label: str = "working-tree"
 ) -> list[str]:
     """Check modified paths against protected_paths and stage.allow_write globs."""
-    violations: list[str] = []
-    for rel_path in sorted(set(paths)):
-        if matches_any(rel_path, protected_paths):
-            violations.append(f"{label}: {rel_path} [ERR_PROTECTED]: path is protected by policy")
-        elif not matches_any(rel_path, stage.allow_write):
-            violations.append(
-                f"{label}: {rel_path} [ERR_SCOPE] ({stage.id}): "
-                f"path outside allow_write {list(stage.allow_write)}"
-            )
-    return violations
+    outside = [
+        f"{label}: {rel_path} [ERR_SCOPE] ({stage.id}): "
+        f"path outside allow_write {list(stage.allow_write)}"
+        for rel_path in sorted(set(paths))
+        if not matches_any(rel_path, (*protected_paths, *stage.allow_write))
+    ]
+    return sorted(check_paths_protected(paths, protected_paths, label) + outside)

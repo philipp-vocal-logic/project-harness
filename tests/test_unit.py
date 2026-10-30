@@ -14,6 +14,7 @@ from project_harness.model import (
     CommitHeader,
     Stage,
     check_paths_scope,
+    check_policy_commit,
     matches_any,
     matches_glob,
     parse_subject,
@@ -82,6 +83,19 @@ def test_check_paths_scope_reports_protected_and_out_of_scope_files() -> None:
 
 
 @trace("REQ-POLICY")
+def test_check_policy_commit_requires_reason_and_protected_paths_only() -> None:
+    protected = (".policy/**",)
+    reason = "policy(arch): raise limit\n\nReason: core grew with merge gate\n"
+    assert check_policy_commit([".policy/arch.toml"], reason, protected) == []
+    assert check_policy_commit([".policy/arch.toml"], "policy(arch): x\n", protected) == [
+        "working-tree [ERR_POLICY_REASON]: missing 'Reason: <why>' line"
+    ]
+    assert check_policy_commit(["src/a.py"], reason, protected, label="abc1234") == [
+        "abc1234: src/a.py [ERR_SCOPE] (policy): path outside protected_paths"
+    ]
+
+
+@trace("REQ-POLICY")
 @pytest.mark.parametrize(
     ("toml_text", "expected_match"),
     [
@@ -126,6 +140,11 @@ def test_check_paths_scope_reports_protected_and_out_of_scope_files() -> None:
             '[[stages]]\nid = "s"\ncommit_prefix = "p"\nallow_write = ["src/**"]\n'
             "fail_exit_codes = [0]\n",
             "must be a non-empty list of exit codes",
+        ),
+        (
+            '[workflow]\npolicy_commit_type = "p"\n'
+            '[[stages]]\nid = "s"\ncommit_prefix = "p"\nallow_write = ["src/**"]\n',
+            "policy_commit_type: invalid or duplicate 'p'",
         ),
     ],
 )

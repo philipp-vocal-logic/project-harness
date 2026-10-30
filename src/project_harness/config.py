@@ -10,7 +10,9 @@ from typing import Any
 from project_harness.model import Orchestrator, Stage, Workflow
 
 ALLOWED_ROOT_KEYS = frozenset({"workflow", "orchestrator", "stages"})
-ALLOWED_WORKFLOW_KEYS = frozenset({"protected_paths", "checks", "commit_types"})
+ALLOWED_WORKFLOW_KEYS = frozenset(
+    {"protected_paths", "checks", "commit_types", "policy_commit_type"}
+)
 ALLOWED_ORCHESTRATOR_KEYS = frozenset({"agent_command", "max_retries"})
 ALLOWED_STAGE_KEYS = frozenset(
     {"id", "commit_prefix", "allow_write", "checks", "fail_checks", "fail_exit_codes", "prompt"}
@@ -124,6 +126,18 @@ def _parse_commit_types(raw_list: Any, stages: tuple[Stage, ...]) -> tuple[str, 
     return commit_types
 
 
+def _parse_policy_commit_type(
+    table: dict[str, Any], stages: tuple[Stage, ...], commit_types: tuple[str, ...]
+) -> str:
+    if "policy_commit_type" not in table:
+        return ""
+    policy_type = _require_str(table, "policy_commit_type", "workflow")
+    taken = {stage.commit_prefix for stage in stages} | set(commit_types)
+    if not PREFIX_PATTERN.fullmatch(policy_type) or policy_type in taken:
+        raise ValueError(f"workflow.policy_commit_type: invalid or duplicate '{policy_type}'")
+    return policy_type
+
+
 def load_workflow(path: Path) -> Workflow:
     """Load and validate a .policy/workflow.toml file."""
     with path.open("rb") as handle:
@@ -138,4 +152,5 @@ def load_workflow(path: Path) -> Workflow:
     stages = _parse_stages(raw.get("stages"))
     orchestrator = _parse_orchestrator(raw.get("orchestrator"))
     commit_types = _parse_commit_types(wf_table.get("commit_types", []), stages)
-    return Workflow(protected, checks, stages, orchestrator, commit_types)
+    policy_type = _parse_policy_commit_type(wf_table, stages, commit_types)
+    return Workflow(protected, checks, stages, orchestrator, commit_types, policy_type)

@@ -14,6 +14,7 @@ from project_harness.model import (
     Workflow,
     check_paths_protected,
     check_paths_scope,
+    check_policy_commit,
     is_git_generated,
     parse_subject,
 )
@@ -138,16 +139,34 @@ def _classify_subject(
             "expected <type>(<target>): <summary> (<= 72 chars)"
         ]
     stage = workflow.stage_by_prefix(header.prefix)
-    if stage is not None and header.target is None:
-        return None, [f"{label} [ERR_COMMIT_MSG]: stage commit '{subject}' requires (<target>)"]
-    if stage is None and header.prefix not in workflow.commit_types:
+    is_policy = _is_policy_subject(workflow, subject)
+    if (stage is not None or is_policy) and header.target is None:
+        return None, [f"{label} [ERR_COMMIT_MSG]: '{header.prefix}' commit requires (<target>)"]
+    if stage is None and not is_policy and header.prefix not in workflow.commit_types:
         return None, [f"{label} [ERR_COMMIT_MSG]: unknown commit type '{header.prefix}'"]
     return stage, []
 
 
+def _is_policy_subject(workflow: Workflow, subject: str) -> bool:
+    header = parse_subject(subject)
+    return bool(workflow.policy_commit_type) and (
+        header is not None and header.prefix == workflow.policy_commit_type
+    )
+
+
+def _non_stage_violations(
+    workflow: Workflow, subject: str, message: str, paths: list[str], label: str
+) -> list[str]:
+    """Policy commits: protected paths only + Reason. Other non-stage commits: no protected."""
+    if _is_policy_subject(workflow, subject):
+        return check_policy_commit(paths, message, workflow.protected_paths, label)
+    return check_paths_protected(paths, workflow.protected_paths, label)
+
+
 def check_commit_file(root: Path, workflow: Workflow, msg_file: Path) -> list[str]:
     """Validate commit message file and run the corresponding stage checks on staged files."""
-    lines = msg_file.read_text(encoding="utf-8").splitlines()
+    message = msg_file.read_text(encoding="utf-8")
+    lines = [line for line in message.splitlines() if not line.startswith("#")]
     subject = lines[0].strip() if lines else ""
     if is_git_generated(subject):
         return []
@@ -157,9 +176,10 @@ def check_commit_file(root: Path, workflow: Workflow, msg_file: Path) -> list[st
     if stage is not None:
         return check_stage(root, workflow, stage.id, staged_only=True)
     staged = changed_working_paths(root, staged_only=True)
-    return check_paths_protected(staged, workflow.protected_paths) or run_commands(
-        root, workflow.checks
-    )
+    label = "working-tree"
+    return _non_stage_violations(
+        workflow, subject, "\n".join(lines), staged, label
+    ) or run_commands(root, workflow.checks)
 
 
 def _check_single_commit(
@@ -172,16 +192,17 @@ def _check_single_commit(
         return None, violations
     files = _git_lines(root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha)
     if stage is None:
-        return None, check_paths_protected(files, workflow.protected_paths, label=short_sha)
+        message = "\n".join(_git_lines(root, "log", "-1", "--format=%B", sha))
+        return None, _non_stage_violations(workflow, subject, message, files, short_sha)
     return stage.id, check_paths_scope(files, stage, workflow.protected_paths, label=short_sha)
 
 
 def check_merge(root: Path, workflow: Workflow, base_ref: str) -> list[str]:
     """Verify clean tree, commit types, stage sequence and scopes in base_ref..HEAD, and checks.
 
-    Merge commits are skipped. Allowed non-stage commits (workflow.commit_types, Revert) are
-    only checked against protected_paths. If the branch has any stage commit, the stage
-    commits must form the full configured stage sequence.
+    Merge commits are skipped. Allowed non-stage commits (workflow.commit_types, Revert) must
+    not touch protected_paths; policy commits must only touch protected_paths and give a Reason.
+    If the branch has any stage commit, the stage commits must form the full stage sequence.
     """
     if changed_working_paths(root):
         return ["working-tree [ERR_DIRTY]: uncommitted changes present"]
