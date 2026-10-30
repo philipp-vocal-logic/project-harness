@@ -148,6 +148,7 @@ def test_merge_check_rejects_skipped_stages_and_tampered_tests(
     assert main(["--config", str(cfg), "check", "--base", "main"]) == 1
     out = capsys.readouterr().out
     assert "[ERR_SCOPE] (implementer)" in out
+    assert "[ERR_HISTORY]: stage sequence ['planner', 'implementer']" in out
 
 
 @trace("REQ-STAGE")
@@ -221,6 +222,11 @@ def test_merge_check_allows_non_stage_and_merge_commits(
     _commit_file(tmp_path, "src/calc.py", impl, "feat(REQ-1): implement add")
     _commit_file(tmp_path, "trace/REQ-1.toml", 'status = "APPROVED"\n', "review(REQ-1): ok")
     assert main(["--config", str(cfg), "check", "--base", "main"]) == 0
+
+    # All stage commits on a branch must share one target
+    git_run(tmp_path, "commit", "--amend", "-m", "review(REQ-2): ok")
+    assert main(["--config", str(cfg), "check", "--base", "main"]) == 1
+    assert "target several nodes ['REQ-1', 'REQ-2']" in capsys.readouterr().out
 
     # Branch with only non-stage commits needs no stage sequence
     git_run(tmp_path, "checkout", "side")

@@ -10,7 +10,7 @@ from trace_check import trace
 
 from project_harness.cli import main
 from project_harness.config import load_workflow
-from project_harness.core import materialize_policy_files, run_commands
+from project_harness.core import _fill, materialize_policy_files, run_commands
 from project_harness.model import (
     CommitHeader,
     Stage,
@@ -164,19 +164,33 @@ def test_materialize_policy_files_copies_and_cleans_up(tmp_path: Path) -> None:
     policy_dir.mkdir()
     (policy_dir / "workflow.toml").write_text("# workflow\n", encoding="utf-8")
     (policy_dir / "arch.toml").write_text("# arch\n", encoding="utf-8")
-    (policy_dir / "glossary.toml").write_text("# policy glossary\n", encoding="utf-8")
-    (tmp_path / "glossary.toml").write_text("# existing root glossary\n", encoding="utf-8")
+    (policy_dir / "glossary.toml").write_text("# glossary\n", encoding="utf-8")
+    (tmp_path / "glossary.toml").write_text("# glossary\n", encoding="utf-8")
 
     with materialize_policy_files(tmp_path) as materialized:
         assert materialized == frozenset({"arch.toml", "glossary.toml"})
         assert (tmp_path / "arch.toml").is_file()
         assert not (tmp_path / "workflow.toml").exists()
-        assert (tmp_path / "glossary.toml").read_text(encoding="utf-8") == (
-            "# existing root glossary\n"
-        )
 
     assert not (tmp_path / "arch.toml").exists()
-    assert (tmp_path / "glossary.toml").read_text(encoding="utf-8") == "# existing root glossary\n"
+    assert (tmp_path / "glossary.toml").read_text(encoding="utf-8") == "# glossary\n"
+
+    # A differing root file would shadow the .policy file: refuse instead of using it
+    (tmp_path / "glossary.toml").write_text("# stale root glossary\n", encoding="utf-8")
+    with (
+        pytest.raises(ValueError, match=r"glossary\.toml in root differs"),
+        materialize_policy_files(tmp_path),
+    ):
+        pass
+    assert not (tmp_path / "arch.toml").exists()
+
+
+@trace("REQ-ORCHESTRATOR")
+def test_fill_replaces_known_placeholders_and_keeps_other_braces() -> None:
+    template = 'Do {target} in {stage}; emit {"k": 1} and {unknown}'
+    assert _fill(template, target="REQ-{stage}", stage="s") == (
+        'Do REQ-{stage} in s; emit {"k": 1} and {unknown}'
+    )
 
 
 @trace("REQ-POLICY")

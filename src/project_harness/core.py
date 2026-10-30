@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 from collections.abc import Iterator, Sequence
+from itertools import groupby
 from pathlib import Path
 
 from project_harness.model import (
@@ -25,6 +26,7 @@ FAILURE_LINE_PATTERN = re.compile(
     r"|thread '.+' panicked at|\[\s*FAILED\s*\])"
     r"|:\s*(?:fatal )?error:|Assertion .* failed"
 )
+PLACEHOLDER_PATTERN = re.compile(r"\{(\w+)\}")
 
 
 @contextlib.contextmanager
@@ -34,15 +36,16 @@ def materialize_policy_files(root: Path) -> Iterator[frozenset[str]]:
     created: list[Path] = []
     names: set[str] = set()
     try:
-        if policy_dir.is_dir():
-            for source in sorted(policy_dir.glob("*.toml")):
-                if source.name == "workflow.toml":
-                    continue
-                target = root / source.name
-                names.add(source.name)
-                if not target.exists():
-                    shutil.copyfile(source, target)
-                    created.append(target)
+        for source in sorted(policy_dir.glob("*.toml")):
+            if source.name == "workflow.toml":
+                continue
+            target = root / source.name
+            if not target.exists():
+                shutil.copyfile(source, target)
+                created.append(target)
+            elif target.read_bytes() != source.read_bytes():
+                raise ValueError(f"{target.name} in root differs from .policy/{source.name}")
+            names.add(source.name)
         yield frozenset(names)
     finally:
         for path in created:
@@ -210,7 +213,8 @@ def check_merge(root: Path, workflow: Workflow, base_ref: str) -> list[str]:
 
     Merge commits are skipped. Allowed non-stage commits (workflow.commit_types, Revert) must
     not touch protected_paths; policy commits must only touch protected_paths and give a Reason.
-    If the branch has any stage commit, the stage commits must form the full stage sequence.
+    If the branch has any stage commit, the stage commits must form the full stage sequence
+    for a single target.
     """
     if changed_working_paths(root):
         return ["working-tree [ERR_DIRTY]: uncommitted changes present"]
@@ -219,29 +223,50 @@ def check_merge(root: Path, workflow: Workflow, base_ref: str) -> list[str]:
     )
     if not commit_lines:
         return [f"{base_ref}..HEAD [ERR_HISTORY]: no commits ahead of {base_ref}"]
-    seen_stages: list[str] = []
+    stage_commits: list[tuple[str, str]] = []
     violations: list[str] = []
     for line in commit_lines:
         stage_id, commit_violations = _check_single_commit(root, workflow, line)
         violations.extend(commit_violations)
-        if stage_id is not None and (not seen_stages or seen_stages[-1] != stage_id):
-            seen_stages.append(stage_id)
-    expected = [stage.id for stage in workflow.stages]
-    if not violations and seen_stages and seen_stages != expected:
-        violations.append(
-            f"{base_ref}..HEAD [ERR_HISTORY]: stage sequence {seen_stages} != expected {expected}"
-        )
+        if stage_id is not None:
+            stage_commits.append((stage_id, line.partition(" ")[2]))
+    violations.extend(_history_violations(workflow, stage_commits, f"{base_ref}..HEAD"))
     return violations or run_commands(root, workflow.checks)
+
+
+def _history_violations(
+    workflow: Workflow, stage_commits: list[tuple[str, str]], label: str
+) -> list[str]:
+    """Stage commits (stage id, subject) must form the full stage sequence for one target."""
+    if not stage_commits:
+        return []
+    seen_stages = [stage_id for stage_id, _ in groupby(stage_id for stage_id, _ in stage_commits)]
+    expected = [stage.id for stage in workflow.stages]
+    headers = [parse_subject(subject) for _, subject in stage_commits]
+    targets = sorted({header.target for header in headers if header and header.target})
+    violations: list[str] = []
+    if seen_stages != expected:
+        violations.append(
+            f"{label} [ERR_HISTORY]: stage sequence {seen_stages} != expected {expected}"
+        )
+    if len(targets) > 1:
+        violations.append(f"{label} [ERR_HISTORY]: stage commits target several nodes {targets}")
+    return violations
+
+
+def _fill(template: str, **values: str) -> str:
+    """Replace known {name} placeholders in one pass; other literal braces are kept."""
+    return PLACEHOLDER_PATTERN.sub(lambda match: values.get(match[1], match[0]), template)
 
 
 def _run_agent_attempt(
     root: Path, workflow: Workflow, stage: Stage, target: str, feedback: list[str]
 ) -> list[str]:
     assert workflow.orchestrator is not None
-    base_prompt = stage.prompt.format(target=target, stage=stage.id)
+    base_prompt = _fill(stage.prompt, target=target, stage=stage.id)
     prompt = f"{base_prompt}\nViolations:\n" + "\n".join(feedback) if feedback else base_prompt
     args = [
-        part.format(prompt=prompt, target=target, stage=stage.id)
+        _fill(part, prompt=prompt, target=target, stage=stage.id)
         for part in workflow.orchestrator.agent_command
     ]
     completed = subprocess.run(args, cwd=root, capture_output=True, text=True, check=False)
