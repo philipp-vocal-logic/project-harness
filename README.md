@@ -38,6 +38,25 @@ All project policy files live in `.policy/`:
 - `.policy/glossary.toml`: `glossary` canonical terms and forbidden synonyms.
 - `.policy/symbols.toml`: `symbol` forbidden subwords and canonical replacements.
 
+## Commit Types
+
+| Commit | Allowed changes | Checks |
+|---|---|---|
+| Stage (`plan`, `test`, `feat`, `review`) `(<target>)` required | Stage `allow_write` globs, never protected paths | Stage `checks`; red-test `fail_checks` must exit with `fail_exit_codes` (`[1, 2]`, so a collection error for a not-yet-implemented symbol counts as red) |
+| `workflow.commit_types` (`fix`, `docs`, `chore`, …) | Anything except protected paths | `workflow.checks` |
+| `policy(<target>): <summary>` | **Only** protected paths | `workflow.checks`; message body must contain a `Reason: <why>` line |
+| `Merge …` / `Revert …` | Skipped by commit-msg; merge commits skipped by the merge gate | — |
+
+Policy update example (no `--no-verify` needed):
+
+```bash
+git add .policy/arch.toml
+git commit -m "policy(arch): raise core.py line limit" -m "Reason: merge gate grew core.py"
+git log --grep '^Reason:' -- .policy/   # audit trail of policy changes
+```
+
+The merge gate (`--base`) requires the full stage sequence only when a branch contains stage commits; branches with only non-stage or policy commits skip it.
+
 ## Development
 
 ```bash
