@@ -1,0 +1,5 @@
+id = "REQ-STAGE"
+type = "Requirement"
+status = "APPROVED"
+title = "Enforce per-stage file write globs, protected paths, and Red-Green test checks"
+links = ["US-1"]

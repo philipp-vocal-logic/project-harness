@@ -1,0 +1,5 @@
+id = "REQ-ORCHESTRATOR"
+type = "Requirement"
+status = "APPROVED"
+title = "Execute automated multi-stage TDD workflow with retry feedback and stage commits"
+links = ["US-1"]

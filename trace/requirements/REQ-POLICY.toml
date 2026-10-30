@@ -1,0 +1,5 @@
+id = "REQ-POLICY"
+type = "Requirement"
+status = "APPROVED"
+title = "Validate .policy workflow configuration and materialize checker configs"
+links = ["US-1"]
