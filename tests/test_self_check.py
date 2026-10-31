@@ -47,9 +47,5 @@ def test_project_adheres_to_own_traceability() -> None:
 @trace("REQ-POLICY")
 def test_project_workflow_config_is_valid() -> None:
     workflow = load_workflow(REPO_ROOT / ".policy" / "workflow.toml")
-    assert [stage.id for stage in workflow.stages] == [
-        "planner",
-        "red-test",
-        "implementer",
-        "reviewer",
-    ]
+    assert ".policy/**" in workflow.protected_paths
+    assert workflow.source_paths == ("src/**",)

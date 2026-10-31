@@ -1,4 +1,4 @@
-"""Stage/merge checks, command execution, and orchestrator loop for project-harness."""
+"""Command execution and the merge check (protected paths, red tests) for project-harness."""
 
 from __future__ import annotations
 
@@ -7,18 +7,18 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Iterator, Sequence
-from itertools import groupby
 from pathlib import Path
 
+from project_harness.config import parse_workflow
 from project_harness.model import (
-    Stage,
+    POLICY_BRANCH_PREFIX,
+    REFACTOR_BRANCH_PREFIX,
     Workflow,
-    check_paths_protected,
-    check_paths_scope,
-    check_policy_commit,
-    is_git_generated,
-    parse_subject,
+    has_reason,
+    matches_glob,
+    matching_paths,
 )
 
 FAILURE_LINE_PATTERN = re.compile(
@@ -26,7 +26,6 @@ FAILURE_LINE_PATTERN = re.compile(
     r"|thread '.+' panicked at|\[\s*FAILED\s*\])"
     r"|:\s*(?:fatal )?error:|Assertion .* failed"
 )
-PLACEHOLDER_PATTERN = re.compile(r"\{(\w+)\}")
 
 
 @contextlib.contextmanager
@@ -62,241 +61,132 @@ def _normalize_command(command: str, materialized: frozenset[str]) -> list[str]:
     ]
 
 
-def _run_single_check(
-    root: Path, command: str, materialized: frozenset[str], expected: tuple[int, ...] = (0,)
-) -> str | None:
+def _run(cwd: Path, command: str, materialized: frozenset[str]) -> tuple[int, str]:
+    """Run command in cwd; return its exit code and the most relevant output line."""
     args = _normalize_command(command, materialized)
-    completed = subprocess.run(args, cwd=root, capture_output=True, text=True, check=False)
-    if completed.returncode in expected:
-        return None
+    completed = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
     raw_lines = f"{completed.stdout}\n{completed.stderr}".splitlines()
     lines = [line.strip() for line in raw_lines if line.strip()]
     detail = next(
         (line for line in lines if FAILURE_LINE_PATTERN.search(line)),
         lines[0] if lines else f"exit code {completed.returncode}",
     )
-    if expected == (0,):
-        return f"{command} [ERR_CHECK]: {detail}"
-    return (
-        f"{command} [ERR_RED_CHECK]: expected exit in {list(expected)}, "
-        f"got exit {completed.returncode}: {detail}"
-    )
+    return completed.returncode, detail
 
 
-def run_commands(
-    root: Path,
-    checks: Sequence[str],
-    fail_checks: Sequence[str] = (),
-    fail_exit_codes: tuple[int, ...] = (1,),
-) -> list[str]:
-    """Execute check commands (must exit 0) and fail_check commands (must exit fail_exit_codes)."""
+def run_commands(root: Path, checks: Sequence[str]) -> list[str]:
+    """Execute check commands in root; each must exit 0."""
     violations: list[str] = []
     with materialize_policy_files(root) as materialized:
         for command in checks:
-            if violation := _run_single_check(root, command, materialized):
-                violations.append(violation)
-        for command in fail_checks:
-            if violation := _run_single_check(root, command, materialized, fail_exit_codes):
-                violations.append(violation)
+            code, detail = _run(root, command, materialized)
+            if code != 0:
+                violations.append(f"{command} [ERR_CHECK]: {detail}")
     return violations
 
 
-def _git_lines(root: Path, *args: str) -> list[str]:
+def _git(root: Path, *args: str) -> str:
     completed = subprocess.run(
         ["git", "-C", str(root), *args], capture_output=True, text=True, check=False
     )
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip() or "git command failed"
         raise ValueError(f"git {' '.join(args)}: {detail}")
-    return [line for line in completed.stdout.splitlines() if line.strip()]
+    return completed.stdout
 
 
-def changed_working_paths(root: Path, *, staged_only: bool = False) -> list[str]:
-    """Return sorted relative POSIX paths modified or untracked in the git working tree."""
-    staged = _git_lines(root, "diff", "--cached", "--name-only")
-    if staged_only:
-        return sorted(set(staged))
-    unstaged = _git_lines(root, "diff", "--name-only")
-    untracked = _git_lines(root, "ls-files", "--others", "--exclude-standard")
-    return sorted({*staged, *unstaged, *untracked})
+def _split_nul(output: str) -> list[str]:
+    return [part for part in output.split("\0") if part.strip()]
 
 
-def check_stage(
-    root: Path, workflow: Workflow, stage_id: str, *, staged_only: bool = False
+def _exception_violations(
+    root: Path, merge_base: str, branch: str, prefix: str, paths: Sequence[str]
 ) -> list[str]:
-    """Validate modified files and run commands for a single workflow stage."""
-    stage = workflow.stage_by_id(stage_id)
-    if stage is None:
-        raise ValueError(f"unknown stage '{stage_id}'")
-    paths = changed_working_paths(root, staged_only=staged_only)
-    if not paths:
-        return [f"working-tree [ERR_EMPTY] ({stage.id}): no modified files for stage"]
-    scope_violations = check_paths_scope(paths, stage, workflow.protected_paths)
-    if scope_violations:
-        return scope_violations
-    return run_commands(root, stage.checks, stage.fail_checks, stage.fail_exit_codes)
-
-
-def _classify_subject(
-    workflow: Workflow, subject: str, label: str
-) -> tuple[Stage | None, list[str]]:
-    """Return (stage, []) for stage commits, (None, []) for allowed non-stage commits."""
-    if is_git_generated(subject):
-        return None, []
-    header = parse_subject(subject)
-    if header is None:
-        return None, [
-            f"{label} [ERR_COMMIT_MSG]: invalid subject '{subject}'; "
-            "expected <type>(<target>): <summary> (<= 72 chars)"
-        ]
-    stage = workflow.stage_by_prefix(header.prefix)
-    is_policy = _is_policy_subject(workflow, subject)
-    if (stage is not None or is_policy) and header.target is None:
-        return None, [f"{label} [ERR_COMMIT_MSG]: '{header.prefix}' commit requires (<target>)"]
-    if stage is None and not is_policy and header.prefix not in workflow.commit_types:
-        return None, [f"{label} [ERR_COMMIT_MSG]: unknown commit type '{header.prefix}'"]
-    return stage, []
-
-
-def _is_policy_subject(workflow: Workflow, subject: str) -> bool:
-    header = parse_subject(subject)
-    return bool(workflow.policy_commit_type) and (
-        header is not None and header.prefix == workflow.policy_commit_type
+    """Allow changes to paths only on a prefix branch whose commits touching them give a Reason."""
+    if not branch.startswith(prefix):
+        return [f"branch '{branch}' [ERR_BRANCH]: exception requires a '{prefix}*' branch"]
+    pathspecs = [f":(literal){rel_path}" for rel_path in paths]
+    log = _git(
+        root, "log", "-z", "--no-merges", "--format=%h%n%B", f"{merge_base}..HEAD", "--", *pathspecs
     )
-
-
-def _non_stage_violations(
-    workflow: Workflow, subject: str, message: str, paths: list[str], label: str
-) -> list[str]:
-    """Policy commits: protected paths only + Reason. Other non-stage commits: no protected."""
-    if _is_policy_subject(workflow, subject):
-        return check_policy_commit(paths, message, workflow.protected_paths, label)
-    return check_paths_protected(paths, workflow.protected_paths, label)
-
-
-def check_commit_file(root: Path, workflow: Workflow, msg_file: Path) -> list[str]:
-    """Validate commit message file and run the corresponding stage checks on staged files."""
-    message = msg_file.read_text(encoding="utf-8")
-    lines = [line for line in message.splitlines() if not line.startswith("#")]
-    subject = lines[0].strip() if lines else ""
-    if is_git_generated(subject):
-        return []
-    stage, violations = _classify_subject(workflow, subject, str(msg_file))
-    if violations:
-        return violations
-    if stage is not None:
-        return check_stage(root, workflow, stage.id, staged_only=True)
-    staged = changed_working_paths(root, staged_only=True)
-    label = "working-tree"
-    return _non_stage_violations(
-        workflow, subject, "\n".join(lines), staged, label
-    ) or run_commands(root, workflow.checks)
-
-
-def _check_single_commit(
-    root: Path, workflow: Workflow, commit_line: str
-) -> tuple[str | None, list[str]]:
-    sha, _, subject = commit_line.partition(" ")
-    short_sha = sha[:7]
-    stage, violations = _classify_subject(workflow, subject, short_sha)
-    if violations:
-        return None, violations
-    files = _git_lines(root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha)
-    if stage is None:
-        message = "\n".join(_git_lines(root, "log", "-1", "--format=%B", sha))
-        return None, _non_stage_violations(workflow, subject, message, files, short_sha)
-    return stage.id, check_paths_scope(files, stage, workflow.protected_paths, label=short_sha)
-
-
-def check_merge(root: Path, workflow: Workflow, base_ref: str) -> list[str]:
-    """Verify clean tree, commit types, stage sequence and scopes in base_ref..HEAD, and checks.
-
-    Merge commits are skipped. Allowed non-stage commits (workflow.commit_types, Revert) must
-    not touch protected_paths; policy commits must only touch protected_paths and give a Reason.
-    If the branch has any stage commit, the stage commits must form the full stage sequence
-    for a single target.
-    """
-    if changed_working_paths(root):
-        return ["working-tree [ERR_DIRTY]: uncommitted changes present"]
-    commit_lines = _git_lines(
-        root, "log", "--reverse", "--no-merges", "--format=%H %s", f"{base_ref}..HEAD"
-    )
-    if not commit_lines:
-        return [f"{base_ref}..HEAD [ERR_HISTORY]: no commits ahead of {base_ref}"]
-    stage_commits: list[tuple[str, str]] = []
-    violations: list[str] = []
-    for line in commit_lines:
-        stage_id, commit_violations = _check_single_commit(root, workflow, line)
-        violations.extend(commit_violations)
-        if stage_id is not None:
-            stage_commits.append((stage_id, line.partition(" ")[2]))
-    violations.extend(_history_violations(workflow, stage_commits, f"{base_ref}..HEAD"))
-    return violations or run_commands(root, workflow.checks)
-
-
-def _history_violations(
-    workflow: Workflow, stage_commits: list[tuple[str, str]], label: str
-) -> list[str]:
-    """Stage commits (stage id, subject) must form the full stage sequence for one target."""
-    if not stage_commits:
-        return []
-    seen_stages = [stage_id for stage_id, _ in groupby(stage_id for stage_id, _ in stage_commits)]
-    expected = [stage.id for stage in workflow.stages]
-    headers = [parse_subject(subject) for _, subject in stage_commits]
-    targets = sorted({header.target for header in headers if header and header.target})
-    violations: list[str] = []
-    if seen_stages != expected:
-        violations.append(
-            f"{label} [ERR_HISTORY]: stage sequence {seen_stages} != expected {expected}"
-        )
-    if len(targets) > 1:
-        violations.append(f"{label} [ERR_HISTORY]: stage commits target several nodes {targets}")
-    return violations
-
-
-def _fill(template: str, **values: str) -> str:
-    """Replace known {name} placeholders in one pass; other literal braces are kept."""
-    return PLACEHOLDER_PATTERN.sub(lambda match: values.get(match[1], match[0]), template)
-
-
-def _run_agent_attempt(
-    root: Path, workflow: Workflow, stage: Stage, target: str, feedback: list[str]
-) -> list[str]:
-    assert workflow.orchestrator is not None
-    base_prompt = _fill(stage.prompt, target=target, stage=stage.id)
-    prompt = f"{base_prompt}\nViolations:\n" + "\n".join(feedback) if feedback else base_prompt
-    args = [
-        _fill(part, prompt=prompt, target=target, stage=stage.id)
-        for part in workflow.orchestrator.agent_command
+    commits = [entry.partition("\n") for entry in _split_nul(log)]
+    if not commits:
+        return [f"branch '{branch}' [ERR_REASON]: no commit records these changes"]
+    return [
+        f"{sha} [ERR_REASON]: missing 'Reason: <why>' line"
+        for sha, _, message in commits
+        if not has_reason(message)
     ]
-    completed = subprocess.run(args, cwd=root, capture_output=True, text=True, check=False)
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or "agent failed"
-        return [f"agent ({stage.id}) [ERR_AGENT]: {detail}"]
-    return check_stage(root, workflow, stage.id)
 
 
-def _execute_stage(root: Path, workflow: Workflow, stage: Stage, target: str) -> list[str]:
-    assert workflow.orchestrator is not None
-    feedback: list[str] = []
-    for _ in range(workflow.orchestrator.max_retries):
-        feedback = _run_agent_attempt(root, workflow, stage, target, feedback)
-        if not feedback:
-            _git_lines(root, "add", "-A")
-            _git_lines(
-                root, "commit", "--no-verify", "-m", f"{stage.commit_prefix}({target}): {stage.id}"
-            )
-            return []
-    return feedback
+def _protected_violations(
+    root: Path, workflow: Workflow, merge_base: str, branch: str, changed: list[str]
+) -> list[str]:
+    touched = matching_paths(changed, workflow.protected_paths)
+    if not touched:
+        return []
+    problems = _exception_violations(root, merge_base, branch, POLICY_BRANCH_PREFIX, touched)
+    if not problems:
+        return []
+    return [f"{rel_path} [ERR_PROTECTED]: path is protected by policy" for rel_path in touched] + (
+        problems
+    )
 
 
-def run_workflow(root: Path, workflow: Workflow, target: str) -> list[str]:
-    """Run all configured TDD workflow stages in sequence for target, committing each stage."""
-    if workflow.orchestrator is None:
-        raise ValueError("orchestrator section is required in workflow.toml for 'harness run'")
-    if changed_working_paths(root):
-        return ["working-tree [ERR_DIRTY]: uncommitted changes present before workflow run"]
-    for stage in workflow.stages:
-        if violations := _execute_stage(root, workflow, stage, target):
-            return violations
-    return []
+def _run_against_base_source(
+    root: Path, workflow: Workflow, merge_base: str, sources: list[str]
+) -> tuple[int, str]:
+    """Run test_command on HEAD with the source files reset to merge_base."""
+    patterns = [
+        pattern
+        for pattern in workflow.source_paths
+        if any(matches_glob(rel_path, pattern) for rel_path in sources)
+    ]
+    with tempfile.TemporaryDirectory() as scratch:
+        tree = Path(scratch) / "red"
+        _git(root, "worktree", "add", "--detach", "--quiet", str(tree), "HEAD")
+        try:
+            pathspecs = [f":(glob){pattern}" for pattern in patterns]
+            _git(tree, "restore", f"--source={merge_base}", "--worktree", "--", *pathspecs)
+            return _run(tree, workflow.test_command, frozenset())
+        finally:
+            _git(root, "worktree", "remove", "--force", str(tree))
+
+
+def _red_violations(
+    root: Path, workflow: Workflow, merge_base: str, branch: str, changed: list[str]
+) -> list[str]:
+    sources = matching_paths(changed, workflow.source_paths)
+    if not sources:
+        return []
+    code, detail = _run_against_base_source(root, workflow, merge_base, sources)
+    if code in workflow.red_exit_codes:
+        return []
+    problems = _exception_violations(root, merge_base, branch, REFACTOR_BRANCH_PREFIX, sources)
+    if not problems:
+        return []
+    red = (
+        f"{workflow.test_command} [ERR_RED]: expected exit in {list(workflow.red_exit_codes)} "
+        f"against base source, got exit {code}: {detail}"
+    )
+    return [red, *problems]
+
+
+def check_merge(root: Path, config_rel: str, base_ref: str, branch: str | None) -> list[str]:
+    """Check HEAD against base_ref using the workflow rules stored on base_ref.
+
+    Protected paths may only change on a policy/* branch, source changes need tests that fail
+    against the base source unless on a refactor/* branch; both exceptions need a Reason line
+    in every commit touching the paths. Afterwards the base workflow checks run on HEAD.
+    """
+    if _git(root, "status", "--porcelain").strip():
+        return ["working-tree [ERR_DIRTY]: uncommitted changes present"]
+    workflow = parse_workflow(_git(root, "show", f"{base_ref}:{config_rel}"))
+    merge_base = _git(root, "merge-base", base_ref, "HEAD").strip()
+    branch_name = branch or _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    changed = _split_nul(
+        _git(root, "diff", "-z", "--name-only", "--no-renames", merge_base, "HEAD")
+    )
+    violations = _protected_violations(root, workflow, merge_base, branch_name, changed)
+    violations += _red_violations(root, workflow, merge_base, branch_name, changed)
+    return violations or run_commands(root, workflow.checks)

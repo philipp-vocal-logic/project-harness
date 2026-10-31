@@ -1,5 +1,5 @@
 id = "US-1"
 type = "Story"
 status = "APPROVED"
-title = "Configurable Git TDD workflow and policy harness"
-description = "Allow coding agents and developers to enforce .policy rules and multi-stage Git TDD workflows with local and GitHub merge checks."
+title = "Policy harness checking branches against a stable base"
+description = "Allow coding agents and developers to enforce .policy rules, traceable protected path changes, and test-first source changes when merging into the stable base branch."

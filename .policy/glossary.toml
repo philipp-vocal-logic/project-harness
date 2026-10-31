@@ -22,20 +22,15 @@ forbidden_terms = ["convention", "guideline", "charter"]
 
 [[terms]]
 term = "workflow"
-definition = "An ordered sequence of git TDD development stages and merge checks."
+definition = "The protected paths, checks, and red check rules defined in .policy/workflow.toml."
 forbidden_terms = ["playbook", "runbook", "tier_list"]
 
 [[terms]]
-term = "stage"
-definition = "A single step in the workflow bound to a commit prefix, write globs, and shell commands."
-forbidden_terms = ["phase", "milestone", "lifecycle_state"]
-
-[[terms]]
-term = "orchestrator"
-definition = "The automated runner that invokes an agent subprocess per stage and commits passing changes."
-forbidden_terms = ["supervisor", "coordinator", "dispatcher"]
+term = "reason"
+definition = "A 'Reason: <why>' commit message line that records why an exception was taken."
+forbidden_terms = ["justification", "rationale"]
 
 [[terms]]
 term = "violation"
-definition = "A diagnostic line emitted when a file scope, commit history, or command check fails."
+definition = "A diagnostic line emitted when a protected path, red check, or command check fails."
 forbidden_terms = ["offense", "infringement", "breach"]

@@ -1,5 +1,0 @@
-id = "REQ-MERGE"
-type = "Requirement"
-status = "APPROVED"
-title = "Enforce ordered stage commit history and policy checks at merge time"
-links = ["US-1"]

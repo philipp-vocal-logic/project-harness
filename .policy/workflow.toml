@@ -1,9 +1,8 @@
 [workflow]
+# `harness check --base <ref>` reads this file from <ref>, never from the branch under check.
+# Changing protected_paths requires a policy/* branch whose commits touching them contain a
+# "Reason: <why>" line.
 protected_paths = [".policy/**", ".github/**", ".githooks/**", "pyproject.toml"]
-commit_types = ["fix", "refactor", "docs", "chore", "build", "ci", "perf", "style"]
-# policy(<target>): <summary> commits may change protected_paths (and nothing else)
-# if the message body contains a "Reason: <why>" line.
-policy_commit_type = "policy"
 checks = [
     "uv run ruff check .",
     "uv run ruff format --check .",
@@ -13,60 +12,9 @@ checks = [
     "uv run trace-check .policy/traceability.toml",
     "uv run pytest -q",
 ]
-
-[orchestrator]
-max_retries = 3
-agent_command = ["agy", "--print", "{prompt}"]
-
-[[stages]]
-id = "planner"
-commit_prefix = "plan"
-allow_write = ["trace/**/*.toml"]
-checks = [
-    "uv run glossary --config .policy/glossary.toml",
-    "uv run trace-check .policy/traceability.toml",
-]
-prompt = "Create or update DRAFT traceability nodes in trace/ for {target}."
-
-[[stages]]
-id = "red-test"
-commit_prefix = "test"
-allow_write = ["tests/**/*.py"]
-checks = [
-    "uv run ruff check tests/",
-    "uv run glossary --config .policy/glossary.toml",
-    "uv run symbol --config .policy/symbols.toml",
-    "uv run architecture --config .policy/arch.toml",
-    "uv run trace-check .policy/traceability.toml",
-]
-fail_checks = ["uv run pytest -q"]
-# 1 = tests failed, 2 = collection error (e.g. importing a not-yet-implemented symbol).
-# Syntax errors are rejected earlier by `ruff check tests/`.
-fail_exit_codes = [1, 2]
-prompt = "Write failing pytest test(s) decorated with @trace('{target}') in tests/."
-
-[[stages]]
-id = "implementer"
-commit_prefix = "feat"
-allow_write = ["src/**/*.py"]
-checks = [
-    "uv run ruff check .",
-    "uv run ruff format --check .",
-    "uv run glossary --config .policy/glossary.toml",
-    "uv run symbol --config .policy/symbols.toml",
-    "uv run architecture --config .policy/arch.toml",
-    "uv run trace-check .policy/traceability.toml",
-    "uv run pytest -q",
-]
-prompt = "Implement minimal code in src/ so all tests pass without modifying tests/."
-
-[[stages]]
-id = "reviewer"
-commit_prefix = "review"
-allow_write = ["trace/**/*.toml"]
-checks = [
-    "uv run glossary --config .policy/glossary.toml",
-    "uv run trace-check .policy/traceability.toml",
-    "uv run pytest -q",
-]
-prompt = "Review diff against {target}; set status = 'APPROVED' in trace/."
+# Red check: when source_paths change, test_command must exit with one of red_exit_codes on the
+# branch tests combined with the base source (1 = tests failed, 2 = collection error).
+# A refactor/* branch whose commits touching source_paths contain a "Reason: <why>" line is exempt.
+source_paths = ["src/**"]
+test_command = "uv run pytest -q"
+red_exit_codes = [1, 2]

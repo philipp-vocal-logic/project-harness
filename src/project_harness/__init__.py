@@ -1,5 +1,5 @@
-"""Project harness for .policy enforcement and configurable Git TDD workflows."""
+"""Project harness for .policy enforcement and merge checks against a stable base."""
 
-from project_harness.model import CommitHeader, Orchestrator, Stage, Workflow
+from project_harness.model import Workflow
 
-__all__ = ["CommitHeader", "Orchestrator", "Stage", "Workflow"]
+__all__ = ["Workflow"]

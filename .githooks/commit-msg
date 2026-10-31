@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Subject validation and checks are driven by .policy/workflow.toml:
-# stage commits run their stage checks, workflow.commit_types run workflow.checks.
-exec uv run harness check --commit-msg "$1"

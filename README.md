@@ -1,66 +1,62 @@
 # project-harness (`harness`)
 
-Minimal, zero-noise CLI project harness that enforces `.policy/` rules and configurable Git TDD workflows using only the Python standard library and existing checker CLIs (`trace-check`, `architecture`, `glossary`, `symbol`, `ruff`, `pytest`).
+Minimal, zero-noise CLI that enforces `.policy/` rules using only the Python standard library and existing checker CLIs (`trace-check`, `architecture`, `glossary`, `symbol`, `ruff`, `pytest`).
+
+The stable base branch (`main`) is trusted; a branch is checked against it before merging, using the rules stored **on the base branch**, so a branch cannot loosen the rules that judge it.
 
 ## Usage
 
 ```bash
-# Run all configured project checks in .policy/workflow.toml
+# Run all workflow checks in .policy/workflow.toml
 uv run harness check
 
-# Validate working tree (or --staged) against a specific TDD workflow stage
-uv run harness check --stage red-test
-uv run harness check --stage implementer --staged
-
-# Validate staged commit via commit-msg file (infers stage from commit prefix)
-uv run harness check --commit-msg .git/COMMIT_EDITMSG
-
-# Validate branch commit history (plan -> test -> feat -> review), scopes, and merge checks
-uv run harness check --base origin/main
-
-# Execute automated orchestrator TDD workflow across all stages for a target node
-uv run harness run REQ-1
+# Merge check of HEAD against the stable base (CI runs this on pull requests)
+uv run harness check --base origin/main --branch "$BRANCH"
 ```
 
-### Exit Codes
+`--branch` defaults to the current branch; CI passes it because pull requests check out a detached merge commit.
 
-- `0`: All policy, scope, history, and command checks pass (silent `stdout`).
-- `1`: One or more violations found (printed to `stdout` as single-line diagnostics).
-- `2`: Configuration or Git execution error (printed to `stderr` with `[ERR_CONFIG]`).
+### Merge check (`--base`)
 
-## `.policy/` Configuration
+Reads `.policy/workflow.toml` from the base ref, diffs `merge-base..HEAD` (`-z --no-renames`, so renames and non-ASCII paths are seen), then:
 
-All project policy files live in `.policy/`:
+| Rule | Passes when | Exception |
+|---|---|---|
+| Protected paths | no file matching `protected_paths` changed | `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
+| Red check | if `source_paths` changed: `test_command` on the branch tests with the base source exits in `red_exit_codes` | `refactor/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
+| Checks | all `checks` exit 0 on HEAD | — |
 
-- `.policy/workflow.toml`: Defines protected paths, merge checks, orchestrator command, and ordered TDD stages (`planner`, `red-test`, `implementer`, `reviewer`).
-- `.policy/traceability.toml`: `trace-check` schema chain (`Story -> Requirement -> TestCase`), statuses, and rules.
+The working tree must be clean. Every exception is traceable in git history:
+
+```bash
+git log --grep '^Reason:' -- .policy/ .github/   # why protected paths changed
+git log --format='%h %an %s' -- .policy/ .github/ .githooks/ pyproject.toml
+```
+
+Use merge commits (or keep the `Reason:` line in squash messages) and disallow force pushes to `main` so the history stays intact.
+
+### Exit codes
+
+- `0`: all checks pass (silent `stdout`).
+- `1`: one or more violations (single-line diagnostics on `stdout`).
+- `2`: configuration or git error (`stderr`, `[ERR_CONFIG]`).
+
+## `.policy/` configuration
+
+- `.policy/workflow.toml`: `protected_paths`, `checks`, and the red check (`source_paths`, `test_command`, `red_exit_codes`).
+- `.policy/traceability.toml`: `trace-check` schema chain (`Story -> Requirement -> TestCase`).
 - `.policy/arch.toml`: `architecture` module line limits and forbidden import rules.
 - `.policy/glossary.toml`: `glossary` canonical terms and forbidden synonyms.
 - `.policy/symbols.toml`: `symbol` forbidden subwords and canonical replacements.
 
-## Commit Types
+## Agents and TDD
 
-| Commit | Allowed changes | Checks |
-|---|---|---|
-| Stage (`plan`, `test`, `feat`, `review`) `(<target>)` required | Stage `allow_write` globs, never protected paths | Stage `checks`; red-test `fail_checks` must exit with `fail_exit_codes` (`[1, 2]`, so a collection error for a not-yet-implemented symbol counts as red) |
-| `workflow.commit_types` (`fix`, `docs`, `chore`, …) | Anything except protected paths | `workflow.checks` |
-| `policy(<target>): <summary>` | **Only** protected paths | `workflow.checks`; message body must contain a `Reason: <why>` line |
-| `Merge …` / `Revert …` | Skipped by commit-msg; merge commits skipped by the merge gate | — |
-
-Policy update example (no `--no-verify` needed):
-
-```bash
-git add .policy/arch.toml
-git commit -m "policy(arch): raise core.py line limit" -m "Reason: merge gate grew core.py"
-git log --grep '^Reason:' -- .policy/   # audit trail of policy changes
-```
-
-The merge gate (`--base`) requires the full stage sequence only when a branch contains stage commits; branches with only non-stage or policy commits skip it.
+Tell agents to write a failing test first and to make it pass without editing tests. The red check is the backstop: source changes only merge with tests that fail against the base source.
 
 ## Development
 
 ```bash
-git config core.hooksPath .githooks
+git config core.hooksPath .githooks   # optional local feedback; CI is the gate
 
 uv run harness check
 uv run pytest

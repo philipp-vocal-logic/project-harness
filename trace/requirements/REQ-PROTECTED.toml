@@ -1,0 +1,5 @@
+id = "REQ-PROTECTED"
+type = "Requirement"
+status = "APPROVED"
+title = "Reject protected path changes at merge time unless on a policy branch with Reason lines"
+links = ["US-1"]

@@ -26,9 +26,12 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked
-      - name: Run branch workflow history & merge gate on PRs
-        if: github.event_name == 'pull_request'
-        run: uv run harness check --base origin/${{ github.base_ref }}
       - run: uv lock --check
-      - name: Run full policy & test checks
+      - name: Merge check against the stable base (rules read from the base branch)
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: uv run harness check --base "origin/$GITHUB_BASE_REF" --branch "$HEAD_REF"
+      - name: Run policy and test checks
+        if: github.event_name != 'pull_request'
         run: uv run harness check

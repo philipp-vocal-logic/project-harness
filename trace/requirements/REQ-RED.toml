@@ -1,0 +1,5 @@
+id = "REQ-RED"
+type = "Requirement"
+status = "APPROVED"
+title = "Require source changes to come with tests that fail against the base source"
+links = ["US-1"]
