@@ -25,7 +25,8 @@ from project_harness.model import (
     matches_any,
     matches_glob,
     matching_paths,
-    normalize_subwords,
+    split_subwords,
+    subword_forms,
 )
 from project_harness.symbol import check_symbol_text
 from project_harness.traceability import check_trace
@@ -76,13 +77,10 @@ def test_has_reason(message: str, expected: bool) -> None:
     assert has_reason(message) is expected
 
 
-def test_normalize_subwords_handles_camel_case_acronyms_and_plurals() -> None:
-    assert normalize_subwords("HTTPResponses_and_matrices") == (
-        "http",
-        "response",
-        "and",
-        "matrix",
-    )
+def test_split_subwords_and_subword_forms_handle_camel_case_acronyms_and_plurals() -> None:
+    assert split_subwords("HTTPResponses_and_URLs") == ("http", "responses", "and", "urls")
+    assert subword_forms("policy") == frozenset({"policy", "policys", "policies"})
+    assert subword_forms("branch") == frozenset({"branch", "branchs", "branches"})
 
 
 def test_parse_workflow_reads_all_keys() -> None:
@@ -117,9 +115,9 @@ def test_parse_workflow_rejects_invalid_configs(toml_text: str, expected_match: 
 
 
 def test_load_workflow_reads_file(tmp_path: Path) -> None:
-    cfg = tmp_path / "workflow.toml"
-    cfg.write_text('[workflow]\nchecks = ["true"]\n', encoding="utf-8")
-    assert load_workflow(cfg).checks == ("true",)
+    config_path = tmp_path / "workflow.toml"
+    config_path.write_text('[workflow]\nchecks = ["true"]\n', encoding="utf-8")
+    assert load_workflow(config_path).checks == ("true",)
 
 
 def test_builtin_checkers_detect_arch_glossary_symbol_and_trace_violations(
@@ -134,14 +132,20 @@ def test_builtin_checkers_detect_arch_glossary_symbol_and_trace_violations(
     glossary = parse_glossary(
         '[[terms]]\nterm = "multiply"\ndefinition = "product"\nforbidden_terms = ["times_op"]\n'
     )
-    assert check_glossary_text("doc.md", "our times_op here\n", glossary) != []
+    assert check_glossary_text("doc.md", "our times_ops here\n", glossary) != []
     assert check_glossary_text("doc.md", "our multiply here\n", glossary) == []
 
     symbols = parse_symbols(
         '[settings]\nforbidden_subwords = ["temp"]\n[replacements]\nload = ["fetch"]\n'
     )
-    sym_hits = check_symbol_text("src/app.py", "def fetch_temp():\n    return 1\n", symbols)
-    assert len(sym_hits) == 2 and all("[ERR_SYMBOL]" in hit for hit in sym_hits)
+    code = (
+        "def fetch_temps[temp_type](x: dict[str, int]) -> int:\n"
+        "    match x:\n"
+        "        case {**temp_rest}:\n"
+        "            return 1\n"
+    )
+    symbol_hits = check_symbol_text("src/app.py", code, symbols)
+    assert len(symbol_hits) == 4 and all("[ERR_SYMBOL]" in hit for hit in symbol_hits)
 
     git_init(tmp_path)
     (tmp_path / "stories").mkdir()
@@ -150,12 +154,12 @@ def test_builtin_checkers_detect_arch_glossary_symbol_and_trace_violations(
     (tmp_path / "reqs" / "REQ-1.toml").write_text(
         'status = "APPROVED"\nlinks = ["MISSING"]\n', encoding="utf-8"
     )
-    trace_cfg = parse_traceability(
+    trace_config = parse_traceability(
         '[schema]\nchain = ["Story", "Requirement"]\n'
         '[statuses]\nStory = ["APPROVED"]\nRequirement = ["APPROVED"]\n'
         '[locations]\nStory = "stories/*.toml"\nRequirement = "reqs/*.toml"\n'
     )
-    trace_hits = check_trace(tmp_path, trace_cfg)
+    trace_hits = check_trace(tmp_path, trace_config)
     assert any("[ERR_DANGLING_LINK]" in hit for hit in trace_hits)
 
 
@@ -171,8 +175,8 @@ def test_run_commands_passes_dot_policy_args_without_copying_to_root(tmp_path: P
         "assert not Path('arch.toml').exists()\n",
         encoding="utf-8",
     )
-    cmd = f"{Path(sys.executable).as_posix()} {script.as_posix()} --config .policy/arch.toml"
-    assert run_commands(tmp_path, [cmd]) == []
+    command = f"{Path(sys.executable).as_posix()} {script.as_posix()} --config .policy/arch.toml"
+    assert run_commands(tmp_path, [command]) == []
 
 
 def test_cli_returns_exit_2_on_missing_config(
@@ -204,7 +208,7 @@ def test_cli_returns_exit_2_on_missing_config(
         pytest.param("", "", "exit code 1", id="empty_stdout_and_stderr_fallback_edge"),
     ],
 )
-def test_run_commands_extracts_failure_details(
+def test_run_commands_parses_failure_details(
     tmp_path: Path, stdout_text: str, stderr_text: str, expected_detail: str
 ) -> None:
     script = tmp_path / "emit_diag.py"
@@ -215,9 +219,9 @@ def test_run_commands_extracts_failure_details(
         "sys.exit(1)\n",
         encoding="utf-8",
     )
-    cmd = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
-    violations = run_commands(tmp_path, [cmd])
-    assert violations == [f"{cmd} [ERR_CHECK]: {expected_detail}"]
+    command = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
+    violations = run_commands(tmp_path, [command])
+    assert violations == [f"{command} [ERR_CHECK]: {expected_detail}"]
 
 
 TEST_LINK_TRACE_TOML = (
@@ -243,12 +247,12 @@ def test_trace_checks_requirement_side_test_links(tmp_path: Path) -> None:
         "REQ-2": '["tests/test_calc.py::test_sub", "tests/missing.py::test_add"]',
         "REQ-3": "[]",
     }
-    for req_id, tests in requirements.items():
-        (tmp_path / "reqs" / f"{req_id}.toml").write_text(
+    for requirement_id, tests in requirements.items():
+        (tmp_path / "reqs" / f"{requirement_id}.toml").write_text(
             f'status = "APPROVED"\ntests = {tests}\n', encoding="utf-8"
         )
-    trace_cfg = parse_traceability(TEST_LINK_TRACE_TOML)
-    assert check_trace(tmp_path, trace_cfg) == [
+    trace_config = parse_traceability(TEST_LINK_TRACE_TOML)
+    assert check_trace(tmp_path, trace_config) == [
         "reqs/REQ-2.toml: REQ-2 [ERR_DANGLING_TEST]: "
         "test 'tests/test_calc.py::test_sub' does not exist",
         "reqs/REQ-2.toml: REQ-2 [ERR_DANGLING_TEST]: "
@@ -260,7 +264,7 @@ def test_trace_checks_requirement_side_test_links(tmp_path: Path) -> None:
         'status = "APPROVED"\ntests = ["tests/test_calc.py"]\n', encoding="utf-8"
     )
     with pytest.raises(ValueError, match="relative path"):
-        check_trace(tmp_path, trace_cfg)
+        check_trace(tmp_path, trace_config)
 
 
 @pytest.mark.parametrize(
@@ -276,9 +280,13 @@ def test_parse_traceability_rejects_invalid_test_rules(rule_tail: str, expected_
         parse_traceability(text)
 
 
-def test_symbol_checker_rejects_non_python_files() -> None:
+def test_symbol_checker_rejects_non_python_files_and_multi_word_rules() -> None:
     with pytest.raises(ValueError, match=r"only \.py files"):
         check_symbol_text("src/calc.rs", "fn main() {}\n", parse_symbols(""))
+    with pytest.raises(ValueError, match="single subwords"):
+        parse_symbols('[settings]\nforbidden_subwords = ["temp_val"]\n')
+    with pytest.raises(ValueError, match="single subwords"):
+        parse_symbols('[replacements]\nload = ["read_config"]\n')
 
 
 def test_parse_glossary_rejects_unused_similarity_threshold() -> None:

@@ -13,7 +13,7 @@ POLICY_BRANCH_PREFIX = "policy/"
 REFACTOR_BRANCH_PREFIX = "refactor/"
 DEPRECATED_STATUS = "DEPRECATED"
 TEST_TYPE = "Test"
-NODE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _UPPER = r"[A-ZÀ-ÖØ-Þ]"
 _LOWER = r"[a-zß-öø-ÿ]"
@@ -22,52 +22,6 @@ SUBWORD_PATTERN = re.compile(
     rf"|{_UPPER}+(?={_UPPER}{_LOWER}|\d|_|\b)"
     rf"|{_UPPER}?{_LOWER}+|\d+"
 )
-INVARIANT_SINGULARS: frozenset[str] = frozenset(
-    {
-        "alias",
-        "atlas",
-        "bias",
-        "bus",
-        "canvas",
-        "chaos",
-        "corpus",
-        "gas",
-        "lens",
-        "news",
-        "series",
-        "species",
-        "status",
-        "virus",
-    }
-)
-IRREGULAR_PLURALS: dict[str, str] = {
-    "aches": "ache",
-    "analyses": "analysis",
-    "axes": "axis",
-    "caches": "cache",
-    "children": "child",
-    "cookies": "cookie",
-    "crises": "crisis",
-    "dbs": "db",
-    "diagnoses": "diagnosis",
-    "does": "do",
-    "goodies": "goodie",
-    "hypotheses": "hypothesis",
-    "ids": "id",
-    "indices": "index",
-    "ips": "ip",
-    "matrices": "matrix",
-    "movies": "movie",
-    "niches": "niche",
-    "parentheses": "parenthesis",
-    "people": "person",
-    "prs": "pr",
-    "syntheses": "synthesis",
-    "theses": "thesis",
-    "uis": "ui",
-    "vertices": "vertex",
-    "vms": "vm",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,41 +147,20 @@ def matching_paths(paths: Sequence[str], patterns: Sequence[str]) -> list[str]:
     return sorted({rel_path for rel_path in paths if matches_any(rel_path, patterns)})
 
 
-def _strip_plural_suffix(word: str) -> str:
-    if word.endswith("es") and word[:-2] in INVARIANT_SINGULARS:
-        return word[:-2]
-    if len(word) > 4 and word.endswith("ies"):
-        return f"{word[:-3]}y"
-    if word.endswith(("sses", "xes", "zes", "zzes", "ches", "shes")):
-        return word[:-2]
-    if word.endswith("s") and not word.endswith(("ss", "us", "is")):
-        return word[:-1]
-    return word
+def split_subwords(text: str) -> tuple[str, ...]:
+    """Split an identifier or phrase into lowercase subwords."""
+    return tuple(match.group(0).lower() for match in SUBWORD_PATTERN.finditer(text))
 
 
-def singularize(word: str) -> str:
-    """Normalize an English subword to its lowercase singular form."""
-    if len(word) >= 3 and word.endswith("s") and word[:-1].isupper():
-        return word[:-1].lower()
-    lower = word.lower()
-    if lower in IRREGULAR_PLURALS:
-        return IRREGULAR_PLURALS[lower]
-    if len(lower) <= 3 or lower in INVARIANT_SINGULARS:
-        return lower
-    return _strip_plural_suffix(lower)
-
-
-def normalize_subwords(text: str) -> tuple[str, ...]:
-    """Split an identifier or phrase into singularized lowercase subwords."""
-    return tuple(singularize(match.group(0)) for match in SUBWORD_PATTERN.finditer(text))
-
-
-def matches_subwords(words: tuple[str, ...], target: tuple[str, ...]) -> bool:
-    """Return True when target appears as a contiguous subword slice within words."""
-    if not target:
-        return False
-    length = len(target)
-    return any(words[index : index + length] == target for index in range(len(words) - length + 1))
+def subword_forms(word: str) -> frozenset[str]:
+    """Return a lowercase subword and its regular English plural forms."""
+    base = word.lower()
+    forms = {base, f"{base}s"}
+    if base.endswith(("s", "x", "z", "ch", "sh")):
+        forms.add(f"{base}es")
+    if len(base) > 1 and base.endswith("y") and base[-2] not in "aeiou":
+        forms.add(f"{base[:-1]}ies")
+    return frozenset(forms)
 
 
 def has_reason(message: str) -> bool:

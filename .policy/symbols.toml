@@ -4,21 +4,31 @@ forbidden_subwords = [
     "info",
     "item",
     "obj",
+    "object",
     "val",
+    "value",
     "temp",
+    "temporary",
     "mgr",
     "manager",
     "helper",
     "util",
+    "utility",
     "stuff",
     "misc",
 ]
 
 [replacements]
-load = ["fetch", "retrieve", "obtain", "read_config"]
+load = ["fetch", "retrieve", "obtain"]
 check = ["lint", "scan", "analyze", "inspect", "audit"]
-parse = ["decode_raw", "extract_field"]
-discover = ["find_nodes", "locate_nodes", "crawl"]
-build = ["construct", "make_object"]
+parse = ["decode", "extract"]
+discover = ["locate", "crawl"]
+build = ["construct"]
 index = ["idx", "pos"]
 error = ["err", "exc"]
+config = ["cfg"]
+command = ["cmd"]
+pattern = ["re", "regex"]
+symbol = ["sym"]
+token = ["tok"]
+adjacency = ["adj"]

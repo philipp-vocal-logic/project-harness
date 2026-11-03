@@ -18,7 +18,7 @@ def check_arch_text(rel_path: str, text: str, rule: ArchRule) -> list[str]:
             f"{rel_path}:1:1 [ERR_ARCH]: {len(lines)}/{rule.max_lines} lines (Fix: {rule.fix})"
         )
     for line_no, line in enumerate(lines, start=1):
-        if any(regex.search(line) for regex in rule.forbid):
+        if any(pattern.search(line) for pattern in rule.forbid):
             violations.append(
                 f"{rel_path}:{line_no}:1 [ERR_ARCH]: {line.strip()} (Fix: {rule.fix})"
             )
@@ -29,7 +29,7 @@ def _resolve_rule_files(root: Path, rule: ArchRule) -> list[Path]:
     matched = walk_files(root, rule.files)
     rel_paths = [path.relative_to(root.resolve()).as_posix() for path in matched]
     for pattern in rule.files:
-        if not any(matches_glob(rel, pattern) for rel in rel_paths):
+        if not any(matches_glob(rel_path, pattern) for rel_path in rel_paths):
             raise ValueError(f"arch.toml files glob matches nothing: {pattern!r}")
     return matched
 
@@ -39,8 +39,8 @@ def check_arch_rule(root: Path, rule: ArchRule) -> list[str]:
     base = root.resolve()
     violations: list[str] = []
     for path in _resolve_rule_files(base, rule):
-        rel = path.relative_to(base).as_posix()
-        violations.extend(check_arch_text(rel, path.read_text(encoding="utf-8"), rule))
+        rel_path = path.relative_to(base).as_posix()
+        violations.extend(check_arch_text(rel_path, path.read_text(encoding="utf-8"), rule))
     return violations
 
 

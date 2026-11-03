@@ -19,7 +19,8 @@ from project_harness.model import (
     TraceRule,
     Workflow,
     matches_any,
-)  # fmt: skip
+    split_subwords,
+)
 
 POLICY_DIR = ".policy"
 ALLOWED_WORKFLOW_KEYS = frozenset(
@@ -27,7 +28,7 @@ ALLOWED_WORKFLOW_KEYS = frozenset(
 )
 ALLOWED_ARCH_KEYS = frozenset({"files", "fix", "max_lines", "forbid"})
 ALLOWED_TERM_KEYS = frozenset({"term", "definition", "forbidden_terms"})
-ALLOWED_SYMBOL_SETTINGS = frozenset({"forbidden_subwords"})
+ALLOWED_SYMBOL_KEYS = frozenset({"forbidden_subwords"})
 ALLOWED_TRACE_KEYS = frozenset({"schema", "statuses", "locations", "rules"})
 ALLOWED_TRACE_RULE_KEYS = frozenset(
     {"id", "source_type", "when_status", "target_type", "target_status"}
@@ -69,13 +70,13 @@ def _check_keys(table: dict[str, Any], allowed: frozenset[str], scope: str) -> N
 
 
 def _require_str(table: dict[str, Any], key: str, scope: str) -> str:
-    value = table.get(key)
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+    raw = table.get(key)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
     raise ValueError(f"{scope}: '{key}' must be a non-empty string")
 
 
-def _str_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
+def _parse_str_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
     if not isinstance(raw_list, list) or not all(
         isinstance(part, str) and part.strip() for part in raw_list
     ):
@@ -83,8 +84,16 @@ def _str_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in raw_list)
 
 
-def _glob_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
-    patterns = _str_tuple(raw_list, label)
+def _parse_subword_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
+    words = _parse_str_tuple(raw_list, label)
+    for word in words:
+        if len(split_subwords(word)) != 1:
+            raise ValueError(f"'{label}' entries must be single subwords: '{word}'")
+    return tuple(word.lower() for word in words)
+
+
+def _parse_glob_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
+    patterns = _parse_str_tuple(raw_list, label)
     for pattern in patterns:
         posix = PurePosixPath(pattern)
         if posix.is_absolute() or ".." in posix.parts:
@@ -92,17 +101,21 @@ def _glob_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
     return patterns
 
 
-def _valid_exit_code(code: Any) -> bool:
+def _is_valid_exit_code(code: Any) -> bool:
     return isinstance(code, int) and not isinstance(code, bool) and 1 <= code <= 255
 
 
-def _exit_code_tuple(raw_list: Any, label: str) -> tuple[int, ...]:
-    if not isinstance(raw_list, list) or not raw_list or not all(map(_valid_exit_code, raw_list)):
+def _parse_exit_codes(raw_list: Any, label: str) -> tuple[int, ...]:
+    if (
+        not isinstance(raw_list, list)
+        or not raw_list
+        or not all(map(_is_valid_exit_code, raw_list))
+    ):
         raise ValueError(f"'{label}' must be a non-empty list of exit codes in 1..255")
     return tuple(raw_list)
 
 
-def _test_command(table: dict[str, Any], source_paths: tuple[str, ...]) -> str:
+def _parse_test_command(table: dict[str, Any], source_paths: tuple[str, ...]) -> str:
     command = table.get("test_command", "")
     if not isinstance(command, str):
         raise ValueError("'workflow.test_command' must be a string")
@@ -117,13 +130,15 @@ def parse_workflow(text: str) -> Workflow:
     _check_keys(raw, frozenset({"workflow"}), "workflow.toml")
     table = _require_table(raw.get("workflow", {}), "workflow")
     _check_keys(table, ALLOWED_WORKFLOW_KEYS, "workflow")
-    source_paths = _glob_tuple(table.get("source_paths", []), "workflow.source_paths")
+    source_paths = _parse_glob_tuple(table.get("source_paths", []), "workflow.source_paths")
     return Workflow(
-        protected_paths=_glob_tuple(table.get("protected_paths", []), "workflow.protected_paths"),
-        checks=_str_tuple(table.get("checks", []), "workflow.checks"),
+        protected_paths=_parse_glob_tuple(
+            table.get("protected_paths", []), "workflow.protected_paths"
+        ),
+        checks=_parse_str_tuple(table.get("checks", []), "workflow.checks"),
         source_paths=source_paths,
-        test_command=_test_command(table, source_paths),
-        red_exit_codes=_exit_code_tuple(
+        test_command=_parse_test_command(table, source_paths),
+        red_exit_codes=_parse_exit_codes(
             table.get("red_exit_codes", [1]), "workflow.red_exit_codes"
         ),
     )
@@ -134,7 +149,7 @@ def load_workflow(path: Path) -> Workflow:
     return parse_workflow(path.read_text(encoding="utf-8"))
 
 
-def _compile_regexes(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
+def _compile_patterns(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
     compiled: list[re.Pattern[str]] = []
     for pattern in patterns:
         try:
@@ -147,13 +162,13 @@ def _compile_regexes(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
 def _parse_arch_rule(raw_rule: Any) -> ArchRule:
     table = _require_table(raw_rule, "arch.rules")
     _check_keys(table, ALLOWED_ARCH_KEYS, "arch.rules")
-    files = _glob_tuple(table.get("files"), "arch.rules.files")
+    files = _parse_glob_tuple(table.get("files"), "arch.rules.files")
     if not files:
         raise ValueError("'arch.rules.files' must not be empty")
     max_lines = table.get("max_lines")
     if max_lines is not None and (not isinstance(max_lines, int) or max_lines < 1):
         raise ValueError("'arch.rules.max_lines' must be a positive integer")
-    forbid = _compile_regexes(_str_tuple(table.get("forbid", []), "arch.rules.forbid"))
+    forbid = _compile_patterns(_parse_str_tuple(table.get("forbid", []), "arch.rules.forbid"))
     if max_lines is None and not forbid:
         raise ValueError(f"arch.rules for {list(files)} needs max_lines or forbid")
     return ArchRule(files, _require_str(table, "fix", "arch.rules"), max_lines, forbid)
@@ -180,7 +195,9 @@ def _parse_term(raw_term: Any) -> Term:
     return Term(
         term=_require_str(table, "term", "glossary.terms"),
         definition=_require_str(table, "definition", "glossary.terms"),
-        forbidden_terms=_str_tuple(table.get("forbidden_terms", []), "glossary.forbidden_terms"),
+        forbidden_terms=_parse_str_tuple(
+            table.get("forbidden_terms", []), "glossary.forbidden_terms"
+        ),
     )
 
 
@@ -204,18 +221,17 @@ def parse_symbols(text: str) -> SymbolSchema:
     raw = tomllib.loads(text)
     _check_keys(raw, frozenset({"settings", "replacements"}), "symbols.toml")
     settings = _require_table(raw.get("settings", {}), "symbols.settings")
-    _check_keys(settings, ALLOWED_SYMBOL_SETTINGS, "symbols.settings")
-    rep_table = _require_table(raw.get("replacements", {}), "symbols.replacements")
+    _check_keys(settings, ALLOWED_SYMBOL_KEYS, "symbols.settings")
+    replacements_table = _require_table(raw.get("replacements", {}), "symbols.replacements")
     replacements = tuple(
-        Replacement(canonical.strip(), _str_tuple(syns, f"symbols.replacements.{canonical}"))
-        for canonical, syns in rep_table.items()
+        Replacement(
+            _parse_subword_tuple([canonical], "symbols.replacements")[0],
+            _parse_subword_tuple(forbidden, f"symbols.replacements.{canonical}"),
+        )
+        for canonical, forbidden in replacements_table.items()
     )
-    return SymbolSchema(
-        forbidden_subwords=tuple(
-            w.lower() for w in _str_tuple(settings.get("forbidden_subwords", []), "forbidden")
-        ),
-        replacements=replacements,
-    )
+    forbidden = _parse_subword_tuple(settings.get("forbidden_subwords", []), "forbidden_subwords")
+    return SymbolSchema(forbidden_subwords=forbidden, replacements=replacements)
 
 
 def load_symbols(path: Path) -> SymbolSchema:
@@ -226,21 +242,21 @@ def load_symbols(path: Path) -> SymbolSchema:
 def _parse_trace_rule(raw_rule: Any, chain: tuple[str, ...]) -> TraceRule:
     table = _require_table(raw_rule, "traceability.rules")
     _check_keys(table, ALLOWED_TRACE_RULE_KEYS, "traceability.rules")
-    rid = _require_str(table, "id", "traceability.rules")
-    source_type = _require_str(table, "source_type", rid)
-    target_type = _require_str(table, "target_type", rid)
+    rule_id = _require_str(table, "id", "traceability.rules")
+    source_type = _require_str(table, "source_type", rule_id)
+    target_type = _require_str(table, "target_type", rule_id)
     if source_type not in chain or target_type not in (*chain, TEST_TYPE):
-        raise ValueError(f"{rid}: source_type and target_type must be chain types or '{TEST_TYPE}'")
+        raise ValueError(
+            f"{rule_id}: source_type and target_type must be chain types or '{TEST_TYPE}'"
+        )
     is_test = target_type == TEST_TYPE
     if is_test and "target_status" in table:
-        raise ValueError(f"{rid}: target_status is not allowed for target_type '{TEST_TYPE}'")
-    return TraceRule(
-        id=rid,
-        source_type=source_type,
-        when_status=_require_str(table, "when_status", rid),
-        target_type=target_type,
-        target_status=() if is_test else _str_tuple(table.get("target_status"), f"{rid}.status"),
+        raise ValueError(f"{rule_id}: target_status is not allowed for target_type '{TEST_TYPE}'")
+    target_status = (
+        () if is_test else _parse_str_tuple(table.get("target_status"), f"{rule_id}.status")
     )
+    when_status = _require_str(table, "when_status", rule_id)
+    return TraceRule(rule_id, source_type, when_status, target_type, target_status)
 
 
 def parse_traceability(text: str) -> TraceConfig:
@@ -249,26 +265,26 @@ def parse_traceability(text: str) -> TraceConfig:
     _check_keys(raw, ALLOWED_TRACE_KEYS, "traceability.toml")
     schema = _require_table(raw.get("schema", {}), "traceability.schema")
     _check_keys(schema, frozenset({"chain"}), "traceability.schema")
-    chain = _str_tuple(schema.get("chain"), "traceability.schema.chain")
+    chain = _parse_str_tuple(schema.get("chain"), "traceability.schema.chain")
     if len(chain) < 2 or len(set(chain)) != len(chain) or TEST_TYPE in chain:
         raise ValueError(f"traceability.schema.chain needs >= 2 unique types, not '{TEST_TYPE}'")
-    stat_table = _require_table(raw.get("statuses", {}), "traceability.statuses")
-    _check_keys(stat_table, frozenset(chain), "traceability.statuses")
+    statuses_table = _require_table(raw.get("statuses", {}), "traceability.statuses")
+    _check_keys(statuses_table, frozenset(chain), "traceability.statuses")
     statuses = {
-        kind: frozenset(_str_tuple(stat_table.get(kind), f"statuses.{kind}")) for kind in chain
+        kind: frozenset(_parse_str_tuple(statuses_table.get(kind), f"statuses.{kind}"))
+        for kind in chain
     }
-    loc_table = _require_table(raw.get("locations", {}), "traceability.locations")
-    _check_keys(loc_table, frozenset(chain), "traceability.locations")
-    locations = {kind: _glob_tuple([loc_table.get(kind)], f"locations.{kind}")[0] for kind in chain}
+    locations_table = _require_table(raw.get("locations", {}), "traceability.locations")
+    _check_keys(locations_table, frozenset(chain), "traceability.locations")
+    locations = {
+        kind: _parse_glob_tuple([locations_table.get(kind)], f"locations.{kind}")[0]
+        for kind in chain
+    }
     raw_rules = raw.get("rules", [])
     if not isinstance(raw_rules, list):
         raise ValueError("'traceability.rules' must be a list of tables")
-    return TraceConfig(
-        chain=chain,
-        statuses=statuses,
-        locations=locations,
-        rules=tuple(_parse_trace_rule(entry, chain) for entry in raw_rules),
-    )
+    rules = tuple(_parse_trace_rule(entry, chain) for entry in raw_rules)
+    return TraceConfig(chain, statuses, locations, rules)
 
 
 def load_traceability(path: Path) -> TraceConfig:

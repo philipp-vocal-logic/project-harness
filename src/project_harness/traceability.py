@@ -10,7 +10,7 @@ from typing import Any
 from project_harness.config import walk_files
 from project_harness.model import (
     DEPRECATED_STATUS,
-    NODE_ID_RE,
+    NODE_ID_PATTERN,
     TEST_TYPE,
     Node,
     TraceConfig,
@@ -21,12 +21,12 @@ ALLOWED_NODE_KEYS = frozenset({"id", "type", "status", "title", "description", "
 
 
 def _validate_node_id(node_id: str, scope: str) -> str:
-    if not NODE_ID_RE.match(node_id):
+    if not NODE_ID_PATTERN.match(node_id):
         raise ValueError(f"{scope}: invalid node id '{node_id}'")
     return node_id
 
 
-def _str_list(raw_list: Any, rel_path: str, key: str) -> tuple[str, ...]:
+def _parse_str_list(raw_list: Any, rel_path: str, key: str) -> tuple[str, ...]:
     if not isinstance(raw_list, list) or not all(isinstance(entry, str) for entry in raw_list):
         raise ValueError(f"{rel_path}: '{key}' must be a list of strings")
     cleaned = tuple(entry.strip() for entry in raw_list)
@@ -36,10 +36,10 @@ def _str_list(raw_list: Any, rel_path: str, key: str) -> tuple[str, ...]:
 
 
 def _is_test_ref(ref: str) -> bool:
-    file_part, sep, name_part = ref.partition("::")
+    file_part, separator, name_part = ref.partition("::")
     posix = PurePosixPath(file_part)
     return (
-        bool(file_part and sep)
+        bool(file_part and separator)
         and all(name_part.split("::"))
         and not posix.is_absolute()
         and ".." not in posix.parts
@@ -47,7 +47,7 @@ def _is_test_ref(ref: str) -> bool:
 
 
 def _parse_test_refs(raw_tests: Any, rel_path: str) -> tuple[str, ...]:
-    refs = _str_list(raw_tests, rel_path, "tests")
+    refs = _parse_str_list(raw_tests, rel_path, "tests")
     for ref in refs:
         if not _is_test_ref(ref):
             raise ValueError(f"{rel_path}: test '{ref}' must be '<relative path>::<test name>'")
@@ -72,7 +72,7 @@ def _load_toml_node(path: Path, expected_type: str, rel_path: str) -> Node:
         _validate_node_id(raw_id, rel_path),
         node_type,
         status,
-        _str_list(raw.get("links", []), rel_path, "links"),
+        _parse_str_list(raw.get("links", []), rel_path, "links"),
         rel_path,
         _parse_test_refs(raw.get("tests", []), rel_path),
     )
@@ -96,14 +96,14 @@ def _discover_nodes(root: Path, locations: dict[str, str]) -> dict[str, Node]:
 
 
 def _build_adjacency(nodes: dict[str, Node], edges: set[frozenset[str]]) -> dict[str, set[str]]:
-    adj: dict[str, set[str]] = {node_id: set() for node_id in nodes}
+    adjacency: dict[str, set[str]] = {node_id: set() for node_id in nodes}
     for node in nodes.values():
         for target_id in node.links:
             target = nodes.get(target_id)
             if target and frozenset((node.type, target.type)) in edges:
-                adj[node.id].add(target_id)
-                adj[target_id].add(node.id)
-    return adj
+                adjacency[node.id].add(target_id)
+                adjacency[target_id].add(node.id)
+    return adjacency
 
 
 def _format_violation(node: Node, code: str, message: str, rule_id: str | None = None) -> str:
@@ -166,9 +166,10 @@ def _check_rule_for_node(
         missing = _format_violation(node, "ERR_MISSING_LINK", "requires >= 1 test", rule.id)
         return [] if node.tests else [missing]
     targets = [
-        nodes[tid]
-        for tid in sorted(neighbors)
-        if nodes[tid].type == rule.target_type and nodes[tid].status != DEPRECATED_STATUS
+        nodes[target_id]
+        for target_id in sorted(neighbors)
+        if nodes[target_id].type == rule.target_type
+        and nodes[target_id].status != DEPRECATED_STATUS
     ]
     if not targets:
         return [
@@ -197,7 +198,7 @@ def check_trace(root: Path, config: TraceConfig) -> list[str]:
         frozenset((config.chain[index], config.chain[index + 1]))
         for index in range(len(config.chain) - 1)
     }
-    adj = _build_adjacency(nodes, edges)
+    adjacency = _build_adjacency(nodes, edges)
     violations: list[str] = []
     for node_id in sorted(nodes):
         node = nodes[node_id]
@@ -212,5 +213,5 @@ def check_trace(root: Path, config: TraceConfig) -> list[str]:
         violations.extend(_check_node_links(node, nodes, edges))
         violations.extend(_check_test_refs(base, node))
         for rule in config.rules:
-            violations.extend(_check_rule_for_node(node, rule, adj[node_id], nodes))
+            violations.extend(_check_rule_for_node(node, rule, adjacency[node_id], nodes))
     return violations

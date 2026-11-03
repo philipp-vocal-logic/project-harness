@@ -46,13 +46,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--branch", help="Branch name for policy/* and refactor/* exceptions (default: current)."
     )
 
-    for cmd, desc in (
+    for subcommand, description in (
         ("arch", "Run architecture rules check (.policy/arch.toml)."),
         ("glossary", "Run glossary terminology check (.policy/glossary.toml)."),
         ("symbol", "Run symbol naming check (.policy/symbols.toml)."),
         ("trace", "Run traceability graph check (.policy/traceability.toml)."),
     ):
-        subparsers.add_parser(cmd, help=desc)
+        subparsers.add_parser(subcommand, help=description)
 
     return parser
 
