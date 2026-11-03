@@ -10,17 +10,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from project_harness.model import (
-    DEFAULT_DEPRECATED_STATUS,
     TEST_TYPE,
     ArchRule,
-    Glossary,
     Replacement,
     SymbolSchema,
     Term,
     TraceConfig,
     TraceRule,
     Workflow,
-    is_excluded,
     matches_any,
 )  # fmt: skip
 
@@ -28,10 +25,9 @@ POLICY_DIR = ".policy"
 ALLOWED_WORKFLOW_KEYS = frozenset(
     {"protected_paths", "checks", "source_paths", "test_command", "red_exit_codes"}
 )
-ALLOWED_ARCH_KEYS = frozenset({"files", "fix", "ignore", "max_lines", "forbid"})
-ALLOWED_GLOSSARY_SETTINGS = frozenset({"paths", "exclude"})
+ALLOWED_ARCH_KEYS = frozenset({"files", "fix", "max_lines", "forbid"})
 ALLOWED_TERM_KEYS = frozenset({"term", "definition", "forbidden_terms"})
-ALLOWED_SYMBOL_SETTINGS = frozenset({"include", "exclude", "forbidden_subwords", "allowed_symbols"})
+ALLOWED_SYMBOL_SETTINGS = frozenset({"forbidden_subwords"})
 ALLOWED_TRACE_KEYS = frozenset({"schema", "statuses", "locations", "rules"})
 ALLOWED_TRACE_RULE_KEYS = frozenset(
     {"id", "source_type", "when_status", "target_type", "target_status"}
@@ -49,18 +45,14 @@ def git(cwd: Path, *args: str) -> str:
     return completed.stdout
 
 
-def walk_files(
-    root: Path, include: Sequence[str] = ("**",), exclude: Sequence[str] = ()
-) -> list[Path]:
-    """Return sorted tracked and non-ignored files under root matching include, not exclude."""
+def walk_files(root: Path, include: Sequence[str] = ("**",)) -> list[Path]:
+    """Return sorted tracked and non-ignored files under root matching include."""
     base = root.resolve()
     listed = git(base, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
     return [
         base / rel_path
         for rel_path in sorted({part for part in listed.split("\0") if part})
-        if matches_any(rel_path, include)
-        and not is_excluded(rel_path, exclude)
-        and (base / rel_path).is_file()
+        if matches_any(rel_path, include) and (base / rel_path).is_file()
     ]
 
 
@@ -164,8 +156,7 @@ def _parse_arch_rule(raw_rule: Any) -> ArchRule:
     forbid = _compile_regexes(_str_tuple(table.get("forbid", []), "arch.rules.forbid"))
     if max_lines is None and not forbid:
         raise ValueError(f"arch.rules for {list(files)} needs max_lines or forbid")
-    ignore = _glob_tuple(table.get("ignore", []), "arch.rules.ignore")
-    return ArchRule(files, _require_str(table, "fix", "arch.rules"), ignore, max_lines, forbid)
+    return ArchRule(files, _require_str(table, "fix", "arch.rules"), max_lines, forbid)
 
 
 def parse_arch(text: str) -> tuple[ArchRule, ...]:
@@ -193,23 +184,17 @@ def _parse_term(raw_term: Any) -> Term:
     )
 
 
-def parse_glossary(text: str) -> Glossary:
+def parse_glossary(text: str) -> tuple[Term, ...]:
     """Parse and validate the text of a .policy/glossary.toml file."""
     raw = tomllib.loads(text)
-    _check_keys(raw, frozenset({"settings", "terms"}), "glossary.toml")
-    settings = _require_table(raw.get("settings", {}), "glossary.settings")
-    _check_keys(settings, ALLOWED_GLOSSARY_SETTINGS, "glossary.settings")
+    _check_keys(raw, frozenset({"terms"}), "glossary.toml")
     raw_terms = raw.get("terms", [])
     if not isinstance(raw_terms, list):
         raise ValueError("'glossary.terms' must be a list of tables")
-    paths = _str_tuple(settings.get("paths", ["."]), "glossary.settings.paths")
-    if not paths:
-        raise ValueError("'glossary.settings.paths' must not be empty")
-    terms = tuple(_parse_term(entry) for entry in raw_terms)
-    return Glossary(terms, paths, _str_tuple(settings.get("exclude", []), "glossary.exclude"))
+    return tuple(_parse_term(entry) for entry in raw_terms)
 
 
-def load_glossary(path: Path) -> Glossary:
+def load_glossary(path: Path) -> tuple[Term, ...]:
     """Load and validate a .policy/glossary.toml file."""
     return parse_glossary(path.read_text(encoding="utf-8"))
 
@@ -225,14 +210,10 @@ def parse_symbols(text: str) -> SymbolSchema:
         Replacement(canonical.strip(), _str_tuple(syns, f"symbols.replacements.{canonical}"))
         for canonical, syns in rep_table.items()
     )
-    default_inc = ["src/**/*.py", "tests/**/*.py"]
     return SymbolSchema(
-        include=_glob_tuple(settings.get("include", default_inc), "symbols.settings.include"),
-        exclude=_str_tuple(settings.get("exclude", []), "symbols.settings.exclude"),
         forbidden_subwords=tuple(
             w.lower() for w in _str_tuple(settings.get("forbidden_subwords", []), "forbidden")
         ),
-        allowed_symbols=_str_tuple(settings.get("allowed_symbols", []), "allowed_symbols"),
         replacements=replacements,
     )
 
@@ -267,7 +248,7 @@ def parse_traceability(text: str) -> TraceConfig:
     raw = tomllib.loads(text)
     _check_keys(raw, ALLOWED_TRACE_KEYS, "traceability.toml")
     schema = _require_table(raw.get("schema", {}), "traceability.schema")
-    _check_keys(schema, frozenset({"chain", "deprecated_status"}), "traceability.schema")
+    _check_keys(schema, frozenset({"chain"}), "traceability.schema")
     chain = _str_tuple(schema.get("chain"), "traceability.schema.chain")
     if len(chain) < 2 or len(set(chain)) != len(chain) or TEST_TYPE in chain:
         raise ValueError(f"traceability.schema.chain needs >= 2 unique types, not '{TEST_TYPE}'")
@@ -282,13 +263,11 @@ def parse_traceability(text: str) -> TraceConfig:
     raw_rules = raw.get("rules", [])
     if not isinstance(raw_rules, list):
         raise ValueError("'traceability.rules' must be a list of tables")
-    depr = str(schema.get("deprecated_status", DEFAULT_DEPRECATED_STATUS)).strip()
     return TraceConfig(
         chain=chain,
         statuses=statuses,
         locations=locations,
         rules=tuple(_parse_trace_rule(entry, chain) for entry in raw_rules),
-        deprecated_status=depr,
     )
 
 

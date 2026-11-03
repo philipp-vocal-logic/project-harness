@@ -1,6 +1,3 @@
-[settings]
-paths = ["src", "tests", "trace", "README.md", ".policy/workflow.toml", ".policy/traceability.toml", ".policy/arch.toml", "pyproject.toml"]
-
 [[terms]]
 term = "policy"
 definition = "A declarative project rule file stored inside the .policy directory."

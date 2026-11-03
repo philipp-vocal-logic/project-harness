@@ -8,7 +8,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from project_harness.config import walk_files
-from project_harness.model import NODE_ID_RE, TEST_TYPE, Node, TraceConfig, TraceRule
+from project_harness.model import (
+    DEPRECATED_STATUS,
+    NODE_ID_RE,
+    TEST_TYPE,
+    Node,
+    TraceConfig,
+    TraceRule,
+)
 
 ALLOWED_NODE_KEYS = frozenset({"id", "type", "status", "title", "description", "links", "tests"})
 
@@ -75,7 +82,7 @@ def _discover_nodes(root: Path, locations: dict[str, str]) -> dict[str, Node]:
     base = root.resolve()
     discovered: dict[str, Node] = {}
     for node_type, pattern in locations.items():
-        for file_path in walk_files(base, (pattern,), ()):
+        for file_path in walk_files(base, (pattern,)):
             rel_path = file_path.relative_to(base).as_posix()
             if file_path.suffix != ".toml":
                 raise ValueError(f"{rel_path}: traceability nodes must be .toml files")
@@ -122,9 +129,7 @@ def _check_test_refs(root: Path, node: Node) -> list[str]:
     ]
 
 
-def _check_node_links(
-    node: Node, nodes: dict[str, Node], edges: set[frozenset[str]], depr: str
-) -> list[str]:
+def _check_node_links(node: Node, nodes: dict[str, Node], edges: set[frozenset[str]]) -> list[str]:
     violations: list[str] = []
     for target_id in node.links:
         target = nodes.get(target_id)
@@ -138,19 +143,24 @@ def _check_node_links(
                     node, "ERR_INVALID_EDGE", f"cannot link {node.type} to {target.type}"
                 )
             )
-        elif node.status != depr and target.status == depr:
+        elif node.status != DEPRECATED_STATUS and target.status == DEPRECATED_STATUS:
             violations.append(
                 _format_violation(
-                    node, "ERR_DEPRECATED_LINK", f"active {node.type} links to {depr} '{target_id}'"
+                    node,
+                    "ERR_DEPRECATED_LINK",
+                    f"active {node.type} links to {DEPRECATED_STATUS} '{target_id}'",
                 )
             )
     return violations
 
 
 def _check_rule_for_node(
-    node: Node, rule: TraceRule, neighbors: set[str], nodes: dict[str, Node], depr: str
+    node: Node, rule: TraceRule, neighbors: set[str], nodes: dict[str, Node]
 ) -> list[str]:
-    if node.status == depr or (node.type, node.status) != (rule.source_type, rule.when_status):
+    if node.status == DEPRECATED_STATUS or (node.type, node.status) != (
+        rule.source_type,
+        rule.when_status,
+    ):
         return []
     if rule.target_type == TEST_TYPE:
         missing = _format_violation(node, "ERR_MISSING_LINK", "requires >= 1 test", rule.id)
@@ -158,7 +168,7 @@ def _check_rule_for_node(
     targets = [
         nodes[tid]
         for tid in sorted(neighbors)
-        if nodes[tid].type == rule.target_type and nodes[tid].status != depr
+        if nodes[tid].type == rule.target_type and nodes[tid].status != DEPRECATED_STATUS
     ]
     if not targets:
         return [
@@ -188,7 +198,6 @@ def check_trace(root: Path, config: TraceConfig) -> list[str]:
         for index in range(len(config.chain) - 1)
     }
     adj = _build_adjacency(nodes, edges)
-    depr = config.deprecated_status
     violations: list[str] = []
     for node_id in sorted(nodes):
         node = nodes[node_id]
@@ -200,8 +209,8 @@ def check_trace(root: Path, config: TraceConfig) -> list[str]:
                 )
             )
             continue
-        violations.extend(_check_node_links(node, nodes, edges, depr))
+        violations.extend(_check_node_links(node, nodes, edges))
         violations.extend(_check_test_refs(base, node))
         for rule in config.rules:
-            violations.extend(_check_rule_for_node(node, rule, adj[node_id], nodes, depr))
+            violations.extend(_check_rule_for_node(node, rule, adj[node_id], nodes))
     return violations

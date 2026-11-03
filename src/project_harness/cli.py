@@ -22,7 +22,6 @@ from project_harness.symbol import check_symbols
 from project_harness.traceability import check_trace
 
 POLICY_FILES: dict[str, str] = {
-    "check": "workflow.toml",
     "arch": "arch.toml",
     "glossary": "glossary.toml",
     "symbol": "symbols.toml",
@@ -80,7 +79,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         violations = _dispatch(args)
     except (OSError, ValueError, SyntaxError) as error:
-        print(f"{POLICY_DIR}/{POLICY_FILES[args.command]} [ERR_CONFIG]: {error}", file=sys.stderr)
+        print(f"harness [ERR_CONFIG]: {error}", file=sys.stderr)
         return 2
     for violation in violations:
         print(violation)

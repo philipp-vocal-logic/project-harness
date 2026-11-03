@@ -135,7 +135,7 @@ def test_builtin_checkers_detect_arch_glossary_symbol_and_trace_violations(
         '[[terms]]\nterm = "multiply"\ndefinition = "product"\nforbidden_terms = ["times_op"]\n'
     )
     assert check_glossary_text("doc.md", "our times_op here\n", glossary) != []
-    assert check_glossary_text("doc.md", "times_op # glossary: ignore[times_op]\n", glossary) == []
+    assert check_glossary_text("doc.md", "our multiply here\n", glossary) == []
 
     symbols = parse_symbols(
         '[settings]\nforbidden_subwords = ["temp"]\n[replacements]\nload = ["fetch"]\n'
@@ -282,7 +282,7 @@ def test_symbol_checker_rejects_non_python_files() -> None:
 
 
 def test_parse_glossary_rejects_unused_similarity_threshold() -> None:
-    with pytest.raises(ValueError, match=r"unknown keys in glossary\.settings"):
+    with pytest.raises(ValueError, match=r"unknown keys in glossary\.toml"):
         parse_glossary("[settings]\nsimilarity_threshold = 0.65\n")
 
 

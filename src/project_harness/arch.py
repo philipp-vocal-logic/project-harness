@@ -26,7 +26,7 @@ def check_arch_text(rel_path: str, text: str, rule: ArchRule) -> list[str]:
 
 
 def _resolve_rule_files(root: Path, rule: ArchRule) -> list[Path]:
-    matched = walk_files(root, rule.files, rule.ignore)
+    matched = walk_files(root, rule.files)
     rel_paths = [path.relative_to(root.resolve()).as_posix() for path in matched]
     for pattern in rule.files:
         if not any(matches_glob(rel, pattern) for rel in rel_paths):

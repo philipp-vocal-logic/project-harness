@@ -1,6 +1,4 @@
 [settings]
-include = ["src/**/*.py", "tests/**/*.py"]
-exclude = []
 forbidden_subwords = [
     "data",
     "info",

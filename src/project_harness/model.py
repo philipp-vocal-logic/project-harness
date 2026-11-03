@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 REASON_PATTERN = re.compile(r"^Reason:[ \t]*\S", re.MULTILINE)
 POLICY_BRANCH_PREFIX = "policy/"
 REFACTOR_BRANCH_PREFIX = "refactor/"
-DEFAULT_DEPRECATED_STATUS = "DEPRECATED"
+DEPRECATED_STATUS = "DEPRECATED"
 TEST_TYPE = "Test"
 NODE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -87,7 +87,6 @@ class ArchRule:
 
     files: tuple[str, ...]
     fix: str
-    ignore: tuple[str, ...] = ()
     max_lines: int | None = None
     forbid: tuple[re.Pattern[str], ...] = ()
 
@@ -102,15 +101,6 @@ class Term:
 
 
 @dataclass(frozen=True, slots=True)
-class Glossary:
-    """Parsed .policy/glossary.toml configuration."""
-
-    terms: tuple[Term, ...]
-    paths: tuple[str, ...] = (".",)
-    exclude: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
 class Replacement:
     """A canonical symbol subword and its disallowed synonyms in .policy/symbols.toml."""
 
@@ -122,10 +112,7 @@ class Replacement:
 class SymbolSchema:
     """Parsed .policy/symbols.toml configuration."""
 
-    include: tuple[str, ...] = ("src/**/*.py", "tests/**/*.py")
-    exclude: tuple[str, ...] = ()
     forbidden_subwords: tuple[str, ...] = ()
-    allowed_symbols: tuple[str, ...] = ()
     replacements: tuple[Replacement, ...] = ()
 
 
@@ -173,7 +160,6 @@ class TraceConfig:
     statuses: dict[str, frozenset[str]]
     locations: dict[str, str]
     rules: tuple[TraceRule, ...]
-    deprecated_status: str = DEFAULT_DEPRECATED_STATUS
 
 
 def _match_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...]) -> bool:
@@ -205,20 +191,6 @@ def matches_any(rel_path: str, patterns: Sequence[str]) -> bool:
 def matching_paths(paths: Sequence[str], patterns: Sequence[str]) -> list[str]:
     """Return the sorted unique paths that match at least one glob pattern."""
     return sorted({rel_path for rel_path in paths if matches_any(rel_path, patterns)})
-
-
-def is_excluded(rel_path: str, exclude: Sequence[str]) -> bool:
-    """Return True if rel_path matches any exclude pattern or directory name."""
-    parts = PurePosixPath(rel_path).parts
-    for raw in exclude:
-        pat = raw.strip("/")
-        if not pat:
-            continue
-        if matches_glob(rel_path, pat) or matches_glob(rel_path, f"{pat}/**"):
-            return True
-        if "/" not in pat and any(fnmatchcase(part, pat) for part in parts):
-            return True
-    return False
 
 
 def _strip_plural_suffix(word: str) -> str:

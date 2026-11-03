@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,14 +27,12 @@ SCOPE_NODES = (
     ast.DictComp,
     ast.GeneratorExp,
 )
-LINE_IGNORE_RE = re.compile(r"#\s*symbol\s*:\s*ignore(?:\[([^\]]*)\])?\s*$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
 class _CompiledRules:
     forbidden_subwords: frozenset[str]
-    allowed_symbols: frozenset[str]
-    replacements: tuple[tuple[tuple[str, ...], str, Replacement, frozenset[str]], ...]
+    replacements: tuple[tuple[tuple[str, ...], str, Replacement], ...]
 
 
 def _is_intrinsic(name: str) -> bool:
@@ -90,49 +87,29 @@ def _extract_python_symbols(text: str, file: Path) -> list[Symbol]:
 
 def _compile_rules(schema: SymbolSchema) -> _CompiledRules:
     replacements = tuple(
-        (
-            norm,
-            raw,
-            entry,
-            frozenset({"_".join(norm), "_".join(normalize_subwords(entry.canonical))}),
-        )
+        (norm, raw, entry)
         for entry in schema.replacements
         for raw in entry.forbidden
         if (norm := normalize_subwords(raw))
     )
     return _CompiledRules(
         forbidden_subwords=frozenset(singularize(w) for w in schema.forbidden_subwords),
-        allowed_symbols=frozenset(schema.allowed_symbols),
         replacements=replacements,
     )
 
 
-def _line_ignored(line_text: str, ignore_keys: frozenset[str]) -> bool:
-    match = LINE_IGNORE_RE.search(line_text)
-    if match is None:
-        return False
-    group = match.group(1)
-    if group is None:
-        return True
-    targets = {
-        norm for part in group.split(",") if (norm := "_".join(normalize_subwords(part.strip())))
-    }
-    return bool(ignore_keys & targets)
-
-
-def _check_single_symbol(symbol: Symbol, rules: _CompiledRules, lines: list[str]) -> list[str]:
+def _check_single_symbol(symbol: Symbol, rules: _CompiledRules) -> list[str]:
     rel = symbol.file.as_posix()
-    line_text = lines[symbol.line - 1] if 1 <= symbol.line <= len(lines) else ""
     subwords = normalize_subwords(symbol.name)
     violations: list[str] = []
     for word in dict.fromkeys(subwords):
-        if word in rules.forbidden_subwords and not _line_ignored(line_text, frozenset({word})):
+        if word in rules.forbidden_subwords:
             violations.append(
                 f"{rel}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: Symbol '{symbol.name}' "
                 f"contains forbidden subword '{word}' (Fix: replace '{word}' with a domain noun)"
             )
-    for forbidden_words, raw_forbidden, entry, keys in rules.replacements:
-        if matches_subwords(subwords, forbidden_words) and not _line_ignored(line_text, keys):
+    for forbidden_words, raw_forbidden, entry in rules.replacements:
+        if matches_subwords(subwords, forbidden_words):
             violations.append(
                 f"{rel}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: Symbol '{symbol.name}' "
                 f"uses non-canonical '{raw_forbidden}' (Fix: use '{entry.canonical}')"
@@ -147,20 +124,18 @@ def check_symbol_text(rel_path: str, text: str, schema: SymbolSchema) -> list[st
         raise ValueError(f"symbol checker supports only .py files: '{rel_path}'")
     symbols = _extract_python_symbols(text, file)
     rules = _compile_rules(schema)
-    lines = text.splitlines()
     violations: list[str] = []
     for symbol in symbols:
-        if symbol.name not in rules.allowed_symbols:
-            violations.extend(_check_single_symbol(symbol, rules, lines))
+        violations.extend(_check_single_symbol(symbol, rules))
     return violations
 
 
 def check_symbols(root: Path, schema: SymbolSchema) -> list[str]:
-    """Check all discovered files matching schema.include under root."""
+    """Check all tracked Python files under root."""
     base = root.resolve()
-    files = walk_files(base, schema.include, schema.exclude)
+    files = walk_files(base, ("**/*.py",))
     if not files:
-        raise ValueError("symbols.toml include globs matched no files")
+        raise ValueError("no .py files found under repository root")
     violations: list[str] = []
     for file_path in files:
         rel = file_path.relative_to(base).as_posix()

@@ -218,6 +218,6 @@ def test_policies_skip_git_ignored_files(tmp_path: Path) -> None:
     (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")
     (tmp_path / "build").mkdir()
     (tmp_path / "build" / "gen.py").write_text("temp_value = 1\n", encoding="utf-8")
-    symbols = '[settings]\ninclude = ["**/*.py"]\nforbidden_subwords = ["temp"]\n'
+    symbols = '[settings]\nforbidden_subwords = ["temp"]\n'
     (tmp_path / ".policy" / "symbols.toml").write_text(symbols, encoding="utf-8")
     assert main(["symbol"]) == 0
