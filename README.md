@@ -102,7 +102,7 @@ jobs:
 - `.policy/traceability.toml`: `harness trace` node chain (e.g. `Story -> Requirement`), statuses, TOML node locations, and coverage rules. A rule with `target_type = "Test"` requires the node's `tests` list to be non-empty.
 - `.policy/arch.toml`: `harness arch` rules; each rule sets `max_lines`, `forbid` line regexes, or both.
 - `.policy/glossary.toml`: `harness glossary` canonical terms and forbidden synonyms.
-- `.policy/symbols.toml`: `harness symbol` forbidden subwords and canonical replacements in Python identifiers (`.py` files only).
+- `.policy/symbols.toml`: `harness symbol` forbidden subwords, canonical replacements, and `[[rules]]` naming schema patterns by symbol kind and visibility in Python identifiers (`.py` files only).
 
 ### Traceability
 

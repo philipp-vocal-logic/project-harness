@@ -14,6 +14,21 @@ REFACTOR_BRANCH_PREFIX = "refactor/"
 DEPRECATED_STATUS = "DEPRECATED"
 TEST_TYPE = "Test"
 NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+SYMBOL_KINDS: frozenset[str] = frozenset(
+    {
+        "module",
+        "class",
+        "type_var",
+        "function",
+        "method",
+        "constant",
+        "variable",
+        "parameter",
+        "attribute",
+        "alias",
+    }
+)
+SYMBOL_VISIBILITIES: frozenset[str] = frozenset({"all", "public", "private"})
 
 _UPPER = r"[A-ZÀ-ÖØ-Þ]"
 _LOWER = r"[a-zß-öø-ÿ]"
@@ -63,11 +78,23 @@ class Replacement:
 
 
 @dataclass(frozen=True, slots=True)
+class SymbolRule:
+    """A single .policy/symbols.toml rule binding files, symbol kinds, and visibility to a regex."""
+
+    files: tuple[str, ...]
+    kinds: frozenset[str]
+    pattern: re.Pattern[str]
+    fix: str
+    visibility: str = "all"
+
+
+@dataclass(frozen=True, slots=True)
 class SymbolSchema:
     """Parsed .policy/symbols.toml configuration."""
 
     forbidden_subwords: tuple[str, ...] = ()
     replacements: tuple[Replacement, ...] = ()
+    rules: tuple[SymbolRule, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +102,7 @@ class Symbol:
     """A named code identifier extracted from a source file."""
 
     name: str
+    kind: str
     file: Path
     line: int
     column: int

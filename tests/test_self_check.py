@@ -14,7 +14,7 @@ POLICY_DIR = REPO_ROOT / ".policy"
 
 
 @pytest.fixture(autouse=True)
-def run_in_repo_root(monkeypatch: pytest.MonkeyPatch) -> None:
+def _run_in_repo_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run harness from this repository, wherever pytest was started."""
     monkeypatch.chdir(REPO_ROOT)
 

@@ -18,7 +18,7 @@ from project_harness.model import (
 
 TOKEN_PATTERN = re.compile(r"\w+(?:-\w+)*")
 
-ForbiddenRule = tuple[tuple[frozenset[str], ...], str, Term]
+type ForbiddenRule = tuple[tuple[frozenset[str], ...], str, Term]
 
 
 @dataclass(frozen=True, slots=True)

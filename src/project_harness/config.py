@@ -10,9 +10,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from project_harness.model import (
+    SYMBOL_KINDS,
+    SYMBOL_VISIBILITIES,
     TEST_TYPE,
     ArchRule,
     Replacement,
+    SymbolRule,
     SymbolSchema,
     Term,
     TraceConfig,
@@ -29,6 +32,7 @@ ALLOWED_WORKFLOW_KEYS = frozenset(
 ALLOWED_ARCH_KEYS = frozenset({"files", "fix", "max_lines", "forbid"})
 ALLOWED_TERM_KEYS = frozenset({"term", "definition", "forbidden_terms"})
 ALLOWED_SYMBOL_KEYS = frozenset({"forbidden_subwords"})
+ALLOWED_SYMBOL_RULE_KEYS = frozenset({"files", "kinds", "visibility", "pattern", "fix"})
 ALLOWED_TRACE_KEYS = frozenset({"schema", "statuses", "locations", "rules"})
 ALLOWED_TRACE_RULE_KEYS = frozenset(
     {"id", "source_type", "when_status", "target_type", "target_status"}
@@ -76,12 +80,10 @@ def _require_str(table: dict[str, Any], key: str, scope: str) -> str:
     raise ValueError(f"{scope}: '{key}' must be a non-empty string")
 
 
-def _parse_str_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
-    if not isinstance(raw_list, list) or not all(
-        isinstance(part, str) and part.strip() for part in raw_list
-    ):
+def _parse_str_tuple(parts: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(parts, list) or not all(isinstance(s, str) and s.strip() for s in parts):
         raise ValueError(f"'{label}' must be a list of non-empty strings")
-    return tuple(part.strip() for part in raw_list)
+    return tuple(part.strip() for part in parts)
 
 
 def _parse_subword_tuple(raw_list: Any, label: str) -> tuple[str, ...]:
@@ -105,14 +107,10 @@ def _is_valid_exit_code(code: Any) -> bool:
     return isinstance(code, int) and not isinstance(code, bool) and 1 <= code <= 255
 
 
-def _parse_exit_codes(raw_list: Any, label: str) -> tuple[int, ...]:
-    if (
-        not isinstance(raw_list, list)
-        or not raw_list
-        or not all(map(_is_valid_exit_code, raw_list))
-    ):
+def _parse_exit_codes(codes: Any, label: str) -> tuple[int, ...]:
+    if not isinstance(codes, list) or not codes or not all(map(_is_valid_exit_code, codes)):
         raise ValueError(f"'{label}' must be a non-empty list of exit codes in 1..255")
-    return tuple(raw_list)
+    return tuple(codes)
 
 
 def _parse_test_command(table: dict[str, Any], source_paths: tuple[str, ...]) -> str:
@@ -130,17 +128,12 @@ def parse_workflow(text: str) -> Workflow:
     _check_keys(raw, frozenset({"workflow"}), "workflow.toml")
     table = _require_table(raw.get("workflow", {}), "workflow")
     _check_keys(table, ALLOWED_WORKFLOW_KEYS, "workflow")
+    protected = _parse_glob_tuple(table.get("protected_paths", []), "workflow.protected_paths")
+    checks = _parse_str_tuple(table.get("checks", []), "workflow.checks")
     source_paths = _parse_glob_tuple(table.get("source_paths", []), "workflow.source_paths")
+    red_codes = _parse_exit_codes(table.get("red_exit_codes", [1]), "workflow.red_exit_codes")
     return Workflow(
-        protected_paths=_parse_glob_tuple(
-            table.get("protected_paths", []), "workflow.protected_paths"
-        ),
-        checks=_parse_str_tuple(table.get("checks", []), "workflow.checks"),
-        source_paths=source_paths,
-        test_command=_parse_test_command(table, source_paths),
-        red_exit_codes=_parse_exit_codes(
-            table.get("red_exit_codes", [1]), "workflow.red_exit_codes"
-        ),
+        protected, checks, source_paths, _parse_test_command(table, source_paths), red_codes
     )
 
 
@@ -149,14 +142,11 @@ def load_workflow(path: Path) -> Workflow:
     return parse_workflow(path.read_text(encoding="utf-8"))
 
 
-def _compile_patterns(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
-    compiled: list[re.Pattern[str]] = []
-    for pattern in patterns:
-        try:
-            compiled.append(re.compile(pattern))
-        except re.error as error:
-            raise ValueError(f"invalid forbid regex {pattern!r}: {error}") from None
-    return tuple(compiled)
+def _compile_pattern(pattern: str, label: str) -> re.Pattern[str]:
+    try:
+        return re.compile(pattern)
+    except re.error as error:
+        raise ValueError(f"invalid {label} regex {pattern!r}: {error}") from None
 
 
 def _parse_arch_rule(raw_rule: Any) -> ArchRule:
@@ -168,7 +158,8 @@ def _parse_arch_rule(raw_rule: Any) -> ArchRule:
     max_lines = table.get("max_lines")
     if max_lines is not None and (not isinstance(max_lines, int) or max_lines < 1):
         raise ValueError("'arch.rules.max_lines' must be a positive integer")
-    forbid = _compile_patterns(_parse_str_tuple(table.get("forbid", []), "arch.rules.forbid"))
+    raw_forbid = _parse_str_tuple(table.get("forbid", []), "arch.rules.forbid")
+    forbid = tuple(_compile_pattern(pattern, "forbid") for pattern in raw_forbid)
     if max_lines is None and not forbid:
         raise ValueError(f"arch.rules for {list(files)} needs max_lines or forbid")
     return ArchRule(files, _require_str(table, "fix", "arch.rules"), max_lines, forbid)
@@ -192,13 +183,9 @@ def load_arch(path: Path) -> tuple[ArchRule, ...]:
 def _parse_term(raw_term: Any) -> Term:
     table = _require_table(raw_term, "glossary.terms")
     _check_keys(table, ALLOWED_TERM_KEYS, "glossary.terms")
-    return Term(
-        term=_require_str(table, "term", "glossary.terms"),
-        definition=_require_str(table, "definition", "glossary.terms"),
-        forbidden_terms=_parse_str_tuple(
-            table.get("forbidden_terms", []), "glossary.forbidden_terms"
-        ),
-    )
+    term = _require_str(table, "term", "glossary.terms")
+    forbidden = _parse_str_tuple(table.get("forbidden_terms", []), "glossary.forbidden_terms")
+    return Term(term, _require_str(table, "definition", "glossary.terms"), forbidden)
 
 
 def parse_glossary(text: str) -> tuple[Term, ...]:
@@ -216,10 +203,25 @@ def load_glossary(path: Path) -> tuple[Term, ...]:
     return parse_glossary(path.read_text(encoding="utf-8"))
 
 
+def _parse_symbol_rule(raw_rule: Any) -> SymbolRule:
+    table = _require_table(raw_rule, "symbols.rules")
+    _check_keys(table, ALLOWED_SYMBOL_RULE_KEYS, "symbols.rules")
+    files = _parse_glob_tuple(table.get("files", ["**/*.py"]), "symbols.rules.files")
+    kinds = frozenset(_parse_str_tuple(table.get("kinds"), "symbols.rules.kinds"))
+    if not files or not kinds or not kinds <= SYMBOL_KINDS:
+        raise ValueError(f"symbols.rules needs files and kinds in {sorted(SYMBOL_KINDS)}")
+    visibility = table.get("visibility", "all")
+    if visibility not in SYMBOL_VISIBILITIES:
+        raise ValueError(f"symbols.rules.visibility must be in {sorted(SYMBOL_VISIBILITIES)}")
+    pattern = _compile_pattern(_require_str(table, "pattern", "symbols.rules"), "symbol")
+    fix = _require_str(table, "fix", "symbols.rules")
+    return SymbolRule(files, kinds, pattern, fix, visibility)
+
+
 def parse_symbols(text: str) -> SymbolSchema:
     """Parse and validate the text of a .policy/symbols.toml file."""
     raw = tomllib.loads(text)
-    _check_keys(raw, frozenset({"settings", "replacements"}), "symbols.toml")
+    _check_keys(raw, frozenset({"settings", "replacements", "rules"}), "symbols.toml")
     settings = _require_table(raw.get("settings", {}), "symbols.settings")
     _check_keys(settings, ALLOWED_SYMBOL_KEYS, "symbols.settings")
     replacements_table = _require_table(raw.get("replacements", {}), "symbols.replacements")
@@ -231,7 +233,10 @@ def parse_symbols(text: str) -> SymbolSchema:
         for canonical, forbidden in replacements_table.items()
     )
     forbidden = _parse_subword_tuple(settings.get("forbidden_subwords", []), "forbidden_subwords")
-    return SymbolSchema(forbidden_subwords=forbidden, replacements=replacements)
+    raw_rules = raw.get("rules", [])
+    if not isinstance(raw_rules, list):
+        raise ValueError("'symbols.rules' must be a list of tables")
+    return SymbolSchema(forbidden, replacements, tuple(map(_parse_symbol_rule, raw_rules)))
 
 
 def load_symbols(path: Path) -> SymbolSchema:
@@ -246,15 +251,12 @@ def _parse_trace_rule(raw_rule: Any, chain: tuple[str, ...]) -> TraceRule:
     source_type = _require_str(table, "source_type", rule_id)
     target_type = _require_str(table, "target_type", rule_id)
     if source_type not in chain or target_type not in (*chain, TEST_TYPE):
-        raise ValueError(
-            f"{rule_id}: source_type and target_type must be chain types or '{TEST_TYPE}'"
-        )
+        raise ValueError(f"{rule_id}: types must be chain types or '{TEST_TYPE}'")
     is_test = target_type == TEST_TYPE
     if is_test and "target_status" in table:
         raise ValueError(f"{rule_id}: target_status is not allowed for target_type '{TEST_TYPE}'")
-    target_status = (
-        () if is_test else _parse_str_tuple(table.get("target_status"), f"{rule_id}.status")
-    )
+    status_key = f"{rule_id}.status"
+    target_status = () if is_test else _parse_str_tuple(table.get("target_status"), status_key)
     when_status = _require_str(table, "when_status", rule_id)
     return TraceRule(rule_id, source_type, when_status, target_type, target_status)
 

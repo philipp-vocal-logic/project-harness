@@ -32,3 +32,66 @@ pattern = ["re", "regex"]
 symbol = ["sym"]
 token = ["tok"]
 adjacency = ["adj"]
+
+[[rules]]
+files = ["src/**/*.py"]
+kinds = ["module"]
+pattern = "^[a-z][a-z0-9_]*$"
+fix = "Name source modules in lower_snake_case."
+
+[[rules]]
+files = ["tests/**/test_*.py"]
+kinds = ["module"]
+pattern = "^test_[a-z0-9_]+$"
+fix = "Name test modules 'test_<subject>'."
+
+[[rules]]
+files = ["**/*.py"]
+kinds = ["class", "type_var"]
+pattern = "^_?[A-Z][a-zA-Z0-9]*$"
+fix = "Name classes and type variables in PascalCase."
+
+[[rules]]
+files = ["**/*.py"]
+kinds = ["constant"]
+pattern = "^_?[A-Z][A-Z0-9_]*$"
+fix = "Name module-level constants in UPPER_SNAKE_CASE."
+
+[[rules]]
+files = ["**/*.py"]
+kinds = ["function", "method", "parameter", "variable", "attribute", "alias"]
+pattern = "^_?[a-z][a-z0-9_]*$"
+fix = "Name functions, methods, parameters, variables, attributes, and aliases in snake_case."
+
+[[rules]]
+files = [
+    "src/project_harness/arch.py",
+    "src/project_harness/glossary.py",
+    "src/project_harness/symbol.py",
+    "src/project_harness/traceability.py",
+]
+kinds = ["function"]
+visibility = "public"
+pattern = "^check_[a-z0-9_]+$"
+fix = "Prefix public checker functions with 'check_'."
+
+[[rules]]
+files = ["src/project_harness/config.py"]
+kinds = ["function"]
+visibility = "public"
+pattern = "^(parse|load|walk|git)(_[a-z0-9]+)*$"
+fix = "Start public config functions with 'parse_', 'load_', 'walk_', or 'git'."
+
+[[rules]]
+files = ["src/project_harness/core.py"]
+kinds = ["function"]
+visibility = "public"
+pattern = "^(check|run)_[a-z0-9_]+$"
+fix = "Prefix public core functions with 'check_' or 'run_'."
+
+[[rules]]
+files = ["tests/**/test_*.py"]
+kinds = ["function"]
+visibility = "public"
+pattern = "^test_[a-z0-9_]+$"
+fix = "Prefix public test functions with 'test_' (prefix test helpers with '_')."
