@@ -24,11 +24,11 @@ check = ["lint", "scan", "analyze", "inspect", "audit"]
 parse = ["decode", "extract"]
 discover = ["locate", "crawl"]
 build = ["construct"]
-index = ["idx", "pos"]
+index = ["idx"]
 error = ["err", "exc"]
 config = ["cfg"]
 command = ["cmd"]
-pattern = ["re", "regex"]
+pattern = ["regex"]
 symbol = ["sym"]
 token = ["tok"]
 adjacency = ["adj"]
@@ -44,24 +44,6 @@ files = ["tests/**/test_*.py"]
 kinds = ["module"]
 pattern = "^test_[a-z0-9_]+$"
 fix = "Name test modules 'test_<subject>'."
-
-[[rules]]
-files = ["**/*.py"]
-kinds = ["class", "type_var"]
-pattern = "^_?[A-Z][a-zA-Z0-9]*$"
-fix = "Name classes and type variables in PascalCase."
-
-[[rules]]
-files = ["**/*.py"]
-kinds = ["constant"]
-pattern = "^_?[A-Z][A-Z0-9_]*$"
-fix = "Name module-level constants in UPPER_SNAKE_CASE."
-
-[[rules]]
-files = ["**/*.py"]
-kinds = ["function", "method", "parameter", "variable", "attribute", "alias"]
-pattern = "^_?[a-z][a-z0-9_]*$"
-fix = "Name functions, methods, parameters, variables, attributes, and aliases in snake_case."
 
 [[rules]]
 files = [

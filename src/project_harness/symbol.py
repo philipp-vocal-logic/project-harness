@@ -20,30 +20,15 @@ from project_harness.model import (
 INTRINSIC_NAMES: frozenset[str] = frozenset({"", "_", "self", "cls"})
 DIRECT_BINDINGS: dict[type[ast.AST], tuple[str, str]] = {
     ast.ClassDef: ("name", "class"),
-    ast.TypeVar: ("name", "type_var"),
-    ast.ParamSpec: ("name", "type_var"),
-    ast.TypeVarTuple: ("name", "type_var"),
-    ast.ExceptHandler: ("name", "variable"),
-    ast.MatchAs: ("name", "variable"),
-    ast.MatchStar: ("name", "variable"),
-    ast.MatchMapping: ("rest", "variable"),
-    ast.arg: ("arg", "parameter"),
-    ast.alias: ("asname", "alias"),
-}
-CHILD_SCOPES: dict[type[ast.AST], str] = {
-    ast.ClassDef: "attribute",
-    ast.TypeAlias: "type_var",
-    ast.FunctionDef: "variable",
-    ast.AsyncFunctionDef: "variable",
-    ast.Lambda: "variable",
-    ast.ListComp: "variable",
-    ast.SetComp: "variable",
-    ast.DictComp: "variable",
-    ast.GeneratorExp: "variable",
-    ast.For: "variable",
-    ast.AsyncFor: "variable",
-    ast.With: "variable",
-    ast.AsyncWith: "variable",
+    ast.TypeVar: ("name", "symbol"),
+    ast.ParamSpec: ("name", "symbol"),
+    ast.TypeVarTuple: ("name", "symbol"),
+    ast.ExceptHandler: ("name", "symbol"),
+    ast.MatchAs: ("name", "symbol"),
+    ast.MatchStar: ("name", "symbol"),
+    ast.MatchMapping: ("rest", "symbol"),
+    ast.arg: ("arg", "symbol"),
+    ast.alias: ("asname", "symbol"),
 }
 
 
@@ -62,34 +47,34 @@ def _is_intrinsic(name: str | None) -> bool:
     )
 
 
-def _binding(node: ast.AST, scope: str) -> tuple[str | None, str]:
+def _binding(node: ast.AST, in_class: bool) -> tuple[str | None, str]:
     if spec := DIRECT_BINDINGS.get(type(node)):
         return getattr(node, spec[0]), spec[1]
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        return node.name, ("method" if scope == "attribute" else "function")
+        return node.name, ("method" if in_class else "function")
     if not isinstance(getattr(node, "ctx", None), ast.Store):
         return None, ""
     if isinstance(node, ast.Name):
-        return node.id, scope
+        return node.id, "symbol"
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-        return (node.attr, "attribute") if node.value.id in ("self", "cls") else (None, "")
+        return (node.attr, "symbol") if node.value.id in ("self", "cls") else (None, "")
     return None, ""
 
 
 def _walk_ast(
     node: ast.AST,
     file: Path,
-    scope: str,
+    in_class: bool,
     symbols: list[Symbol],
     seen: set[tuple[str, str]],
 ) -> None:
-    name, kind = _binding(node, scope)
+    name, kind = _binding(node, in_class)
     if name is not None and not _is_intrinsic(name) and (name, kind) not in seen:
         seen.add((name, kind))
         symbols.append(Symbol(name, kind, file, node.lineno, node.col_offset + 1))
-    child_scope = CHILD_SCOPES.get(type(node), scope)
+    child_in_class = isinstance(node, ast.ClassDef)
     for child in ast.iter_child_nodes(node):
-        _walk_ast(child, file, child_scope, symbols, seen)
+        _walk_ast(child, file, child_in_class, symbols, seen)
 
 
 def _parse_python_symbols(text: str, file: Path) -> list[Symbol]:
@@ -100,7 +85,7 @@ def _parse_python_symbols(text: str, file: Path) -> list[Symbol]:
     if not _is_intrinsic(module_name):
         seen.add((module_name, "module"))
         symbols.append(Symbol(module_name, "module", file, 1, 1))
-    _walk_ast(tree, file, "constant", symbols, seen)
+    _walk_ast(tree, file, False, symbols, seen)
     return symbols
 
 

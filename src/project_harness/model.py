@@ -14,20 +14,7 @@ REFACTOR_BRANCH_PREFIX = "refactor/"
 DEPRECATED_STATUS = "DEPRECATED"
 TEST_TYPE = "Test"
 NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-SYMBOL_KINDS: frozenset[str] = frozenset(
-    {
-        "module",
-        "class",
-        "type_var",
-        "function",
-        "method",
-        "constant",
-        "variable",
-        "parameter",
-        "attribute",
-        "alias",
-    }
-)
+SYMBOL_KINDS: frozenset[str] = frozenset({"module", "class", "function", "method"})
 SYMBOL_VISIBILITIES: frozenset[str] = frozenset({"all", "public", "private"})
 
 _UPPER = r"[A-ZÀ-ÖØ-Þ]"
