@@ -250,11 +250,6 @@ def singularize(word: str) -> str:
     return _strip_plural_suffix(lower)
 
 
-def split_subwords(text: str) -> tuple[str, ...]:
-    """Split an identifier or phrase into normalized lowercase subwords."""
-    return tuple(match.group(0).lower() for match in SUBWORD_PATTERN.finditer(text))
-
-
 def normalize_subwords(text: str) -> tuple[str, ...]:
     """Split an identifier or phrase into singularized lowercase subwords."""
     return tuple(singularize(match.group(0)) for match in SUBWORD_PATTERN.finditer(text))

@@ -78,7 +78,7 @@ def check_builtin_policies(root: Path, policy_texts: Mapping[str, str]) -> list[
 
 def _load_local_policies(config_path: Path) -> dict[str, str]:
     policy_dir = config_path.resolve().parent
-    if policy_dir.name != ".policy":  # glossary: ignore[policy]
+    if policy_dir.name != ".policy":
         return {}
     return {
         name: (policy_dir / name).read_text(encoding="utf-8")
@@ -183,7 +183,7 @@ def _red_violations(
 
 def _load_policies(root: Path, ref: str, config_rel: str) -> dict[str, str]:
     parent_rel = PurePosixPath(config_rel).parent.as_posix()
-    if parent_rel != ".policy":  # glossary: ignore[policy]
+    if parent_rel != ".policy":
         return {}
     existing = set(_git(root, "ls-tree", "--name-only", ref, ".policy/").splitlines())
     return {

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Policy and test checks run in commit-msg, where the commit type (and thus the
-# stage, e.g. red-test commits that must fail pytest) is known.
+# Fast local feedback only; the merge check in CI is the gate.
 uv lock --check -q

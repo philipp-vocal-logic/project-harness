@@ -31,7 +31,7 @@ ALLOWED_WORKFLOW_KEYS = frozenset(
     {"protected_paths", "checks", "source_paths", "test_command", "red_exit_codes"}
 )
 ALLOWED_ARCH_KEYS = frozenset({"files", "fix", "ignore", "max_lines", "forbid"})
-ALLOWED_GLOSSARY_SETTINGS = frozenset({"paths", "exclude", "similarity_threshold"})
+ALLOWED_GLOSSARY_SETTINGS = frozenset({"paths", "exclude"})
 ALLOWED_TERM_KEYS = frozenset({"term", "definition", "forbidden_terms"})
 ALLOWED_SYMBOL_SETTINGS = frozenset({"include", "exclude", "forbidden_subwords", "allowed_symbols"})
 ALLOWED_TRACE_KEYS = frozenset({"schema", "statuses", "locations", "rules"})
@@ -43,7 +43,7 @@ ALLOWED_TRACE_RULE_KEYS = frozenset(
 def resolve_root(config_path: Path) -> Path:
     """Resolve the project root directory from a configuration file path."""
     resolved = config_path.resolve()
-    is_policy = resolved.parent.name == ".policy"  # glossary: ignore[policy]
+    is_policy = resolved.parent.name == ".policy"
     return resolved.parent.parent if is_policy else resolved.parent
 
 

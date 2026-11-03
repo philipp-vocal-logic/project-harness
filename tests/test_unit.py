@@ -269,3 +269,8 @@ def test_parse_traceability_rejects_invalid_test_rules(rule_tail: str, expected_
 def test_symbol_checker_rejects_non_python_files() -> None:
     with pytest.raises(ValueError, match=r"only \.py files"):
         check_symbol_text("src/calc.rs", "fn main() {}\n", parse_symbols(""))
+
+
+def test_parse_glossary_rejects_unused_similarity_threshold() -> None:
+    with pytest.raises(ValueError, match=r"unknown keys in glossary\.settings"):
+        parse_glossary("[settings]\nsimilarity_threshold = 0.65\n")

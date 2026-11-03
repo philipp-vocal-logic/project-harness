@@ -21,4 +21,5 @@ tests = [
     "tests/test_unit.py::test_trace_checks_requirement_side_test_links",
     "tests/test_unit.py::test_parse_traceability_rejects_invalid_test_rules",
     "tests/test_unit.py::test_symbol_checker_rejects_non_python_files",
+    "tests/test_unit.py::test_parse_glossary_rejects_unused_similarity_threshold",
 ]
