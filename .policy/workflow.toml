@@ -1,15 +1,11 @@
 [workflow]
-# `harness check --base <ref>` reads this file from <ref>, never from the branch under check.
-# Changing protected_paths requires a policy/* branch whose commits touching them contain a
-# "Reason: <why>" line.
+# `harness check --base <ref>` reads this file and all .policy/*.toml rules from <ref>, never
+# from the branch under check. Changing protected_paths requires a policy/* branch whose commits
+# touching them contain a "Reason: <why>" line.
 protected_paths = [".policy/**", ".github/**", ".githooks/**", "pyproject.toml"]
 checks = [
     "uv run ruff check .",
     "uv run ruff format --check .",
-    "uv run glossary --config .policy/glossary.toml",
-    "uv run symbol --config .policy/symbols.toml",
-    "uv run architecture --config .policy/arch.toml",
-    "uv run trace-check --config .policy/traceability.toml",
     "uv run pytest -q",
 ]
 # Red check: when source_paths change, test_command must exit with one of red_exit_codes on the

@@ -1,4 +1,4 @@
-"""Atomic unit tests for project-harness glob matching, Reason lines, config, and commands."""
+"""Atomic unit tests for project-harness globs, morphology, configs, checkers, and commands."""
 
 from __future__ import annotations
 
@@ -6,12 +6,29 @@ import sys
 from pathlib import Path
 
 import pytest
-from trace_check import trace
 
+from project_harness import trace
+from project_harness.arch import check_arch_text
 from project_harness.cli import main
-from project_harness.config import load_workflow, parse_workflow
+from project_harness.config import (
+    load_workflow,
+    parse_arch,
+    parse_glossary,
+    parse_symbols,
+    parse_traceability,
+    parse_workflow,
+)
 from project_harness.core import run_commands
-from project_harness.model import has_reason, matches_any, matches_glob, matching_paths
+from project_harness.glossary import check_glossary_text
+from project_harness.model import (
+    has_reason,
+    matches_any,
+    matches_glob,
+    matching_paths,
+    normalize_subwords,
+)
+from project_harness.symbol import check_symbol_text
+from project_harness.traceability import check_trace
 
 
 @trace("REQ-PROTECTED")
@@ -58,6 +75,16 @@ def test_has_reason(message: str, expected: bool) -> None:
 
 
 @trace("REQ-POLICY")
+def test_normalize_subwords_handles_camel_case_acronyms_and_plurals() -> None:
+    assert normalize_subwords("HTTPResponses_and_matrices") == (
+        "http",
+        "response",
+        "and",
+        "matrix",
+    )
+
+
+@trace("REQ-POLICY")
 def test_parse_workflow_reads_all_keys() -> None:
     workflow = parse_workflow(
         '[workflow]\nprotected_paths = [".policy/**"]\nchecks = ["true"]\n'
@@ -95,6 +122,43 @@ def test_load_workflow_reads_file(tmp_path: Path) -> None:
     cfg = tmp_path / "workflow.toml"
     cfg.write_text('[workflow]\nchecks = ["true"]\n', encoding="utf-8")
     assert load_workflow(cfg).checks == ("true",)
+
+
+@trace("REQ-POLICY")
+def test_builtin_checkers_detect_arch_glossary_symbol_and_trace_violations(
+    tmp_path: Path,
+) -> None:
+    arch_rules = parse_arch(
+        '[[rules]]\nfiles = ["src/*.py"]\nmax_lines = 1\nforbid = ["print"]\nfix = "slim"\n'
+    )
+    arch_hits = check_arch_text("src/a.py", "x = 1\nprint(x)\n", arch_rules[0])
+    assert len(arch_hits) == 2 and all("[ERR_ARCH]" in hit for hit in arch_hits)
+
+    glossary = parse_glossary(
+        '[[terms]]\nterm = "multiply"\ndefinition = "product"\nforbidden_terms = ["times_op"]\n'
+    )
+    assert check_glossary_text("doc.md", "our times_op here\n", glossary) != []
+    assert check_glossary_text("doc.md", "times_op # glossary: ignore[times_op]\n", glossary) == []
+
+    symbols = parse_symbols(
+        '[settings]\nforbidden_subwords = ["temp"]\n[replacements]\nload = ["fetch"]\n'
+    )
+    sym_hits = check_symbol_text("src/app.py", "def fetch_temp():\n    return 1\n", symbols)
+    assert len(sym_hits) == 2 and all("[ERR_SYMBOL]" in hit for hit in sym_hits)
+
+    (tmp_path / "stories").mkdir()
+    (tmp_path / "reqs").mkdir()
+    (tmp_path / "stories" / "US-1.toml").write_text('status = "APPROVED"\n', encoding="utf-8")
+    (tmp_path / "reqs" / "REQ-1.toml").write_text(
+        'status = "APPROVED"\nlinks = ["MISSING"]\n', encoding="utf-8"
+    )
+    trace_cfg = parse_traceability(
+        '[schema]\nchain = ["Story", "Requirement"]\n'
+        '[statuses]\nStory = ["APPROVED"]\nRequirement = ["APPROVED"]\n'
+        '[locations]\nStory = "stories/*.toml"\nRequirement = "reqs/*.toml"\n'
+    )
+    trace_hits = check_trace(tmp_path, trace_cfg)
+    assert any("[ERR_DANGLING_LINK]" in hit for hit in trace_hits)
 
 
 @trace("REQ-POLICY")

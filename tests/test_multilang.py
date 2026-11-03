@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 import pytest
-from trace_check import trace
 
+from project_harness import trace
 from project_harness.cli import main
 
 PYTHON_BIN = sys.executable
@@ -80,16 +80,10 @@ forbidden_subwords = ["data", "temp", "mgr"]
 
 
 def _build_c89_workflow_toml(c_runner: Path) -> str:
-    checks = (
-        f'"{PYTHON_BIN} -m glossary_checker_cli.cli --config .policy/glossary.toml", '
-        f'"{PYTHON_BIN} -m symbol_checker.cli --config .policy/symbols.toml", '
-        f'"{PYTHON_BIN} -m archcheck --config .policy/arch.toml", '
-        f'"{PYTHON_BIN} -m trace_check.cli --config .policy/traceability.toml"'
-    )
     run_cmd = f"{PYTHON_BIN} {c_runner.as_posix()}"
     return f"""[workflow]
 protected_paths = [".policy/**"]
-checks = [{checks}, "{run_cmd}"]
+checks = ["{run_cmd}"]
 source_paths = ["src/**/*.c"]
 test_command = "{run_cmd}"
 red_exit_codes = [1]
@@ -178,14 +172,14 @@ def test_ansi_c89_merge_check_requires_red_test_and_clean_policy(
     assert main(merge_check) == 0
     assert capsys.readouterr().out == ""
 
-    # Failure case: forbidden symbol subword fails the base policy checks
+    # Failure case: forbidden symbol subword fails the built-in base policy checks
     (repo / "tests" / "test_calc.c").write_text(
         C89_TEST.replace("test_multiply", "temp_multiply"), encoding="utf-8"
     )
     _git(repo, "commit", "-qam", "test: rename")
     assert main(merge_check) == 1
     out = capsys.readouterr().out
-    assert "symbol_checker.cli" in out and "[ERR_CHECK]" in out
+    assert "[ERR_SYMBOL]" in out and "temp_multiply" in out
 
 
 @trace("REQ-POLICY")
@@ -237,9 +231,6 @@ def test_cpp_and_rust_policy_checkers_integration(
     (tmp_path / "arch.toml").write_text(
         ARCH_TOML.replace("src/**/*.c", f"src/**/*{ext}"), encoding="utf-8"
     )
-    for cmd in [
-        [PYTHON_BIN, "-m", "trace_check.cli", "--config", str(tmp_path / "traceability.toml")],
-        [PYTHON_BIN, "-m", "symbol_checker.cli", "--config", str(tmp_path / "symbols.toml")],
-        [PYTHON_BIN, "-m", "archcheck", "--config", str(tmp_path / "arch.toml")],
-    ]:
-        assert subprocess.run(cmd, cwd=tmp_path, check=False).returncode == 0
+    assert main(["trace", "--config", str(tmp_path / "traceability.toml")]) == 0
+    assert main(["symbol", "--config", str(tmp_path / "symbols.toml")]) == 0
+    assert main(["arch", "--config", str(tmp_path / "arch.toml")]) == 0

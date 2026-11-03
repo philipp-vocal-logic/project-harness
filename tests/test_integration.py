@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 import pytest
-from trace_check import trace
 
+from project_harness import trace
 from project_harness.cli import main
 
 PYTHON_BIN = sys.executable

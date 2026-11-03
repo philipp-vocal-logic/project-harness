@@ -19,19 +19,9 @@ harness = "project_harness.cli:main"
 
 [dependency-groups]
 dev = [
-    "archcheck",
-    "glossary-checker-cli",
     "pytest>=8.0",
     "ruff>=0.8",
-    "symbol-checker-cli",
-    "trace-check",
 ]
-
-[tool.uv.sources]
-archcheck = { git = "https://github.com/philipp-vocal-logic/architecture-checker-cli.git", branch = "main" }
-glossary-checker-cli = { git = "https://github.com/philipp-vocal-logic/glossary-checker-cli.git", branch = "main" }
-symbol-checker-cli = { git = "https://github.com/philipp-vocal-logic/symbol-checker-cli.git", branch = "main" }
-trace-check = { git = "https://github.com/philipp-vocal-logic/tracability-checker-cli.git", branch = "main" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

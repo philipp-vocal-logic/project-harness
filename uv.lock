@@ -3,25 +3,12 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-name = "archcheck"
-version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/architecture-checker-cli.git?branch=main#5ed5afb7be9e9d32dcc982f447f6a34da7fc01c3" }
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
-]
-
-[[package]]
-name = "glossary-checker-cli"
-version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/glossary-checker-cli.git?branch=main#4e4071b189712effbb86bf816607b1693736ad5e" }
-dependencies = [
-    { name = "pathspec" },
 ]
 
 [[package]]
@@ -43,15 +30,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pathspec"
-version = "1.1.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5a/82/42f767fc1c1143d6fd36efb827202a2d997a375e160a71eb2888a925aac1/pathspec-1.1.1.tar.gz", hash = "sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a", size = 135180, upload-time = "2026-04-27T01:46:08.907Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl", hash = "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189", size = 57328, upload-time = "2026-04-27T01:46:07.06Z" },
-]
-
-[[package]]
 name = "pluggy"
 version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -67,24 +45,16 @@ source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
-    { name = "archcheck" },
-    { name = "glossary-checker-cli" },
     { name = "pytest" },
     { name = "ruff" },
-    { name = "symbol-checker-cli" },
-    { name = "trace-check" },
 ]
 
 [package.metadata]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "archcheck", git = "https://github.com/philipp-vocal-logic/architecture-checker-cli.git?branch=main" },
-    { name = "glossary-checker-cli", git = "https://github.com/philipp-vocal-logic/glossary-checker-cli.git?branch=main" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.8" },
-    { name = "symbol-checker-cli", git = "https://github.com/philipp-vocal-logic/symbol-checker-cli.git?branch=main" },
-    { name = "trace-check", git = "https://github.com/philipp-vocal-logic/tracability-checker-cli.git?branch=main" },
 ]
 
 [[package]]
@@ -136,16 +106,3 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/a0/f08c1631bfd81faa6a90eaf70c37c786c11bed2046302b56bb506c25e1a0/ruff-0.17.3-py3-none-win_amd64.whl", hash = "sha256:56b8ffb3f3b3cbccb8b76b71b38261b7ed982ef5d20f5b447b1b61a7f4949b24", size = 10341333, upload-time = "2026-10-27T00:34:02.099Z" },
     { url = "https://files.pythonhosted.org/packages/99/d5/4ad4ed31413c301430918e70d3d38ae6f097af0766cb9ab8c9d502b2a4d6/ruff-0.17.3-py3-none-win_arm64.whl", hash = "sha256:81fce74bcd6be0e9da7c67c7553fd0f1f12964a2052cd728ef917b937a5ca1d9", size = 9854332, upload-time = "2026-10-27T00:34:03.847Z" },
 ]
-
-[[package]]
-name = "symbol-checker-cli"
-version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/symbol-checker-cli.git?branch=main#75c03577c9025374ff0350dbf4a3a68461d7bf3d" }
-dependencies = [
-    { name = "pathspec" },
-]
-
-[[package]]
-name = "trace-check"
-version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/tracability-checker-cli.git?branch=main#3903d41de85b8f77bde8eee00cc622e075165073" }
