@@ -11,8 +11,8 @@ from pathlib import Path, PurePosixPath
 REASON_PATTERN = re.compile(r"^Reason:[ \t]*\S", re.MULTILINE)
 POLICY_BRANCH_PREFIX = "policy/"
 REFACTOR_BRANCH_PREFIX = "refactor/"
-DEFAULT_ACTIVE_STATUS = "APPROVED"
 DEFAULT_DEPRECATED_STATUS = "DEPRECATED"
+TEST_TYPE = "Test"
 NODE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _UPPER = r"[A-ZÀ-ÖØ-Þ]"
@@ -153,17 +153,21 @@ class Node:
     status: str
     links: tuple[str, ...] = ()
     location: str = ""
+    tests: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class TraceRule:
-    """A declarative status and link coverage constraint in .policy/traceability.toml."""
+    """A declarative status and link coverage constraint in .policy/traceability.toml.
+
+    A target_type of TEST_TYPE requires at least one entry in the node's tests list.
+    """
 
     id: str
     source_type: str
     when_status: str
     target_type: str
-    target_status: tuple[str, ...]
+    target_status: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

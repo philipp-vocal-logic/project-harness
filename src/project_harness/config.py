@@ -11,6 +11,7 @@ from typing import Any
 
 from project_harness.model import (
     DEFAULT_DEPRECATED_STATUS,
+    TEST_TYPE,
     ArchRule,
     Glossary,
     Replacement,
@@ -243,16 +244,23 @@ def load_symbols(path: Path) -> SymbolSchema:
     return parse_symbols(path.read_text(encoding="utf-8"))
 
 
-def _parse_trace_rule(raw_rule: Any) -> TraceRule:
+def _parse_trace_rule(raw_rule: Any, chain: tuple[str, ...]) -> TraceRule:
     table = _require_table(raw_rule, "traceability.rules")
     _check_keys(table, ALLOWED_TRACE_RULE_KEYS, "traceability.rules")
     rid = _require_str(table, "id", "traceability.rules")
+    source_type = _require_str(table, "source_type", rid)
+    target_type = _require_str(table, "target_type", rid)
+    if source_type not in chain or target_type not in (*chain, TEST_TYPE):
+        raise ValueError(f"{rid}: source_type and target_type must be chain types or '{TEST_TYPE}'")
+    is_test = target_type == TEST_TYPE
+    if is_test and "target_status" in table:
+        raise ValueError(f"{rid}: target_status is not allowed for target_type '{TEST_TYPE}'")
     return TraceRule(
         id=rid,
-        source_type=_require_str(table, "source_type", rid),
+        source_type=source_type,
         when_status=_require_str(table, "when_status", rid),
-        target_type=_require_str(table, "target_type", rid),
-        target_status=_str_tuple(table.get("target_status"), f"{rid}.target_status"),
+        target_type=target_type,
+        target_status=() if is_test else _str_tuple(table.get("target_status"), f"{rid}.status"),
     )
 
 
@@ -263,8 +271,8 @@ def parse_traceability(text: str) -> TraceConfig:
     schema = _require_table(raw.get("schema", {}), "traceability.schema")
     _check_keys(schema, frozenset({"chain", "deprecated_status"}), "traceability.schema")
     chain = _str_tuple(schema.get("chain"), "traceability.schema.chain")
-    if len(chain) < 2 or len(set(chain)) != len(chain):
-        raise ValueError("traceability.schema.chain must have >= 2 unique node types")
+    if len(chain) < 2 or len(set(chain)) != len(chain) or TEST_TYPE in chain:
+        raise ValueError(f"traceability.schema.chain needs >= 2 unique types, not '{TEST_TYPE}'")
     stat_table = _require_table(raw.get("statuses", {}), "traceability.statuses")
     _check_keys(stat_table, frozenset(chain), "traceability.statuses")
     statuses = {
@@ -281,7 +289,7 @@ def parse_traceability(text: str) -> TraceConfig:
         chain=chain,
         statuses=statuses,
         locations=locations,
-        rules=tuple(_parse_trace_rule(entry) for entry in raw_rules),
+        rules=tuple(_parse_trace_rule(entry, chain) for entry in raw_rules),
         deprecated_status=depr,
     )
 

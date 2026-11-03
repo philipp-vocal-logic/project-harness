@@ -3,3 +3,9 @@ type = "Requirement"
 status = "APPROVED"
 title = "Require source changes to come with tests that fail against the base source"
 links = ["US-1"]
+tests = [
+    "tests/test_integration.py::test_merge_check_accepts_test_first_source_change",
+    "tests/test_integration.py::test_merge_check_rejects_source_change_without_red_test",
+    "tests/test_integration.py::test_refactor_branch_needs_reason_in_source_commits",
+    "tests/test_unit.py::test_has_reason",
+]

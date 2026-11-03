@@ -36,11 +36,7 @@ BUILTIN_POLICY_FILES: tuple[str, ...] = (
     "symbols.toml",
     "traceability.toml",
 )
-FAILURE_LINE_PATTERN = re.compile(
-    r"^(?:FAILED |ERROR |error(?:\[E\d+\])?:|test .+ \.\.\. FAILED"
-    r"|thread '.+' panicked at|\[\s*FAILED\s*\])"
-    r"|:\s*(?:fatal )?error:|Assertion .* failed"
-)
+FAILURE_LINE_PATTERN = re.compile(r"^(?:FAILED|ERROR)\b")
 
 
 def _run(cwd: Path, command: str) -> tuple[int, str]:

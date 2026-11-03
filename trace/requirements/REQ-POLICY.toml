@@ -3,3 +3,22 @@ type = "Requirement"
 status = "APPROVED"
 title = "Validate .policy workflow configuration and run checker commands"
 links = ["US-1"]
+tests = [
+    "tests/test_integration.py::test_merge_check_runs_base_checks_after_rules_pass",
+    "tests/test_self_check.py::test_project_adheres_to_own_glossary",
+    "tests/test_self_check.py::test_project_adheres_to_own_symbols",
+    "tests/test_self_check.py::test_project_adheres_to_own_architecture",
+    "tests/test_self_check.py::test_project_adheres_to_own_traceability",
+    "tests/test_self_check.py::test_project_workflow_config_is_valid",
+    "tests/test_unit.py::test_normalize_subwords_handles_camel_case_acronyms_and_plurals",
+    "tests/test_unit.py::test_parse_workflow_reads_all_keys",
+    "tests/test_unit.py::test_parse_workflow_rejects_invalid_configs",
+    "tests/test_unit.py::test_load_workflow_reads_file",
+    "tests/test_unit.py::test_builtin_checkers_detect_arch_glossary_symbol_and_trace_violations",
+    "tests/test_unit.py::test_run_commands_passes_dot_policy_args_without_copying_to_root",
+    "tests/test_unit.py::test_cli_returns_exit_2_on_missing_config",
+    "tests/test_unit.py::test_run_commands_extracts_failure_details",
+    "tests/test_unit.py::test_trace_checks_requirement_side_test_links",
+    "tests/test_unit.py::test_parse_traceability_rejects_invalid_test_rules",
+    "tests/test_unit.py::test_symbol_checker_rejects_non_python_files",
+]

@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from project_harness import trace
 from project_harness.cli import main
 
 PYTHON_BIN = sys.executable
@@ -63,7 +62,6 @@ def merge_check(cfg: Path, branch: str) -> int:
     return main(["--config", str(cfg), "check", "--base", "main", "--branch", branch])
 
 
-@trace("REQ-RED")
 def test_merge_check_accepts_test_first_source_change(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -76,7 +74,6 @@ def test_merge_check_accepts_test_first_source_change(
     assert not list((tmp_path / ".git" / "worktrees").glob("*"))
 
 
-@trace("REQ-RED")
 def test_merge_check_rejects_source_change_without_red_test(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -89,7 +86,6 @@ def test_merge_check_rejects_source_change_without_red_test(
     assert "branch 'feat/add' [ERR_BRANCH]: exception requires a 'refactor/*' branch" in out
 
 
-@trace("REQ-RED")
 def test_refactor_branch_needs_reason_in_source_commits(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -105,7 +101,6 @@ def test_refactor_branch_needs_reason_in_source_commits(
     assert capsys.readouterr().out == ""
 
 
-@trace("REQ-PROTECTED")
 def test_merge_check_rejects_protected_change_using_base_rules(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -123,7 +118,6 @@ def test_merge_check_rejects_protected_change_using_base_rules(
     ]
 
 
-@trace("REQ-PROTECTED")
 def test_policy_branch_needs_reason_in_every_protected_commit(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -149,7 +143,6 @@ def test_policy_branch_needs_reason_in_every_protected_commit(
     assert capsys.readouterr().out == ""
 
 
-@trace("REQ-PROTECTED")
 def test_merge_check_sees_renamed_and_non_ascii_protected_paths(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -164,7 +157,6 @@ def test_merge_check_sees_renamed_and_non_ascii_protected_paths(
     assert "ci/ä.sh [ERR_PROTECTED]" in out
 
 
-@trace("REQ-PROTECTED")
 def test_merge_check_rejects_dirty_tree_and_reports_config_errors(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -178,7 +170,6 @@ def test_merge_check_rejects_dirty_tree_and_reports_config_errors(
     assert "[ERR_CONFIG]" in capsys.readouterr().err
 
 
-@trace("REQ-POLICY")
 def test_merge_check_runs_base_checks_after_rules_pass(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -1,4 +1,4 @@
-"""Symbol naming policy checker for Python AST and C/C++/Rust declarations."""
+"""Symbol naming policy checker for Python source files."""
 
 from __future__ import annotations
 
@@ -17,26 +17,7 @@ from project_harness.model import (
     singularize,
 )
 
-C_RUST_EXTS: frozenset[str] = frozenset({".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".rs"})
-INTRINSIC_NAMES: frozenset[str] = frozenset({
-    "_", "self", "Self", "cls", "main", "argc", "argv", "lib", "mod", "new", "drop",
-    "fmt", "from", "into", "default", "clone", "eq", "cmp", "hash", "deref", "index",
-    "add", "sub", "mul", "div", "TEST", "TEST_F", "TEST_P",
-})  # fmt: skip
-KEYWORDS: frozenset[str] = frozenset({
-    "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue",
-    "return", "goto", "sizeof", "alignof", "typeof", "offsetof", "void", "char", "short",
-    "int", "long", "float", "double", "signed", "unsigned", "bool", "_Bool", "size_t",
-    "ssize_t", "ptrdiff_t", "intptr_t", "uintptr_t", "int8_t", "int16_t", "int32_t",
-    "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "const", "volatile",
-    "restrict", "static", "extern", "auto", "register", "inline", "typedef", "struct",
-    "enum", "union", "class", "namespace", "template", "typename", "public", "private",
-    "protected", "virtual", "override", "final", "explicit", "friend", "operator", "new",
-    "delete", "this", "true", "false", "nullptr", "NULL", "try", "catch", "throw",
-    "noexcept", "constexpr", "consteval", "constinit", "decltype", "using", "static_assert",
-    "fn", "let", "mut", "pub", "crate", "super", "impl", "trait", "where", "type", "match",
-    "loop", "move", "ref", "in", "as", "unsafe", "async", "await", "dyn", "macro_rules",
-})  # fmt: skip
+INTRINSIC_NAMES: frozenset[str] = frozenset({"_", "self", "cls"})
 SCOPE_NODES = (
     ast.ClassDef,
     ast.FunctionDef,
@@ -47,23 +28,7 @@ SCOPE_NODES = (
     ast.DictComp,
     ast.GeneratorExp,
 )
-TOKEN_OR_COMMENT_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*[\s\S]*?\*/')
-LINE_IGNORE_RE = re.compile(
-    r"(?:#|//|/\*+)\s*symbol\s*:\s*ignore(?:\[([^\]]*)\])?\s*(?:\*/)?\s*$",
-    re.IGNORECASE,
-)
-DECL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)", re.MULTILINE),
-    re.compile(r"\b(?:struct|enum|union|class|namespace|trait|mod|type|using|fn)\s+([A-Za-z_]\w*)"),
-    re.compile(r"\b(?:let(?:\s+mut)?|const|static)\s+([A-Za-z_]\w*)\s*(?:(?<!:):(?!:)|=)"),
-    re.compile(r"\btypedef\b[^;{}]*?\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*;"),
-    re.compile(r"\}\s*([A-Za-z_]\w*)\s*;"),
-    re.compile(r"\b([A-Za-z_]\w*)(?<!:):(?!:)\s*[A-Za-z_&\(\[]"),
-    re.compile(
-        r"(?<![:\w])(?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*(?:<[^>]*>)?[\s\*&]+)+"
-        r"([A-Za-z_]\w*)(?!\s*::)\s*(?=[(\[=;,)])"
-    ),
-)
+LINE_IGNORE_RE = re.compile(r"#\s*symbol\s*:\s*ignore(?:\[([^\]]*)\])?\s*$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,38 +88,6 @@ def _extract_python_symbols(text: str, file: Path) -> list[Symbol]:
     return symbols
 
 
-def _blank_comment_or_literal(match: re.Match[str]) -> str:
-    return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
-
-
-def _find_c_rust_decls(text: str) -> list[tuple[int, int, str]]:
-    sanitized = TOKEN_OR_COMMENT_RE.sub(_blank_comment_or_literal, text)
-    found: list[tuple[int, int, str]] = []
-    for pattern in DECL_PATTERNS:
-        for match in pattern.finditer(sanitized):
-            name = match.group(1)
-            if name not in KEYWORDS and not _is_intrinsic(name):
-                offset = match.start(1)
-                line = text.count("\n", 0, offset) + 1
-                col = offset - (text.rfind("\n", 0, offset) + 1) + 1
-                found.append((line, col, name))
-    found.sort(key=lambda entry: (entry[0], entry[1]))
-    return found
-
-
-def _extract_c_rust_symbols(text: str, file: Path) -> list[Symbol]:
-    symbols: list[Symbol] = []
-    seen: set[str] = set()
-    if file.stem not in KEYWORDS and not _is_intrinsic(file.stem):
-        seen.add(file.stem)
-        symbols.append(Symbol(file.stem, file, 1, 1))
-    for line, col, name in _find_c_rust_decls(text):
-        if name not in seen:
-            seen.add(name)
-            symbols.append(Symbol(name, file, line, col))
-    return symbols
-
-
 def _compile_rules(schema: SymbolSchema) -> _CompiledRules:
     replacements = tuple(
         (
@@ -208,13 +141,11 @@ def _check_single_symbol(symbol: Symbol, rules: _CompiledRules, lines: list[str]
 
 
 def check_symbol_text(rel_path: str, text: str, schema: SymbolSchema) -> list[str]:
-    """Extract symbols from source text and check each against schema."""
+    """Extract symbols from Python source text and check each against schema."""
     file = Path(rel_path)
-    symbols = (
-        _extract_c_rust_symbols(text, file)
-        if file.suffix.lower() in C_RUST_EXTS
-        else _extract_python_symbols(text, file)
-    )
+    if file.suffix != ".py":
+        raise ValueError(f"symbol checker supports only .py files: '{rel_path}'")
+    symbols = _extract_python_symbols(text, file)
     rules = _compile_rules(schema)
     lines = text.splitlines()
     violations: list[str] = []

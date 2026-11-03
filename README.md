@@ -50,10 +50,25 @@ Use merge commits (or keep the `Reason:` line in squash messages) and disallow f
 ## `.policy/` configuration
 
 - `.policy/workflow.toml`: `protected_paths`, `checks`, and the red check (`source_paths`, `test_command`, `red_exit_codes`).
-- `.policy/traceability.toml`: `harness trace` schema chain (`Story -> Requirement -> TestCase`).
+- `.policy/traceability.toml`: `harness trace` node chain (e.g. `Story -> Requirement`), statuses, TOML node locations, and coverage rules. A rule with `target_type = "Test"` requires the node's `tests` list to be non-empty.
 - `.policy/arch.toml`: `harness arch` module line limits, forbidden files, and forbidden line regexes.
 - `.policy/glossary.toml`: `harness glossary` canonical terms and forbidden synonyms.
-- `.policy/symbols.toml`: `harness symbol` forbidden subwords and canonical replacements.
+- `.policy/symbols.toml`: `harness symbol` forbidden subwords and canonical replacements in Python identifiers (`.py` files only).
+
+### Traceability
+
+Stories and requirements are TOML files. Requirements link to their tests, so test code needs no annotations and works in any language:
+
+```toml
+# trace/requirements/REQ-RED.toml
+id = "REQ-RED"
+type = "Requirement"
+status = "APPROVED"
+links = ["US-1"]
+tests = ["tests/test_integration.py::test_merge_check_rejects_source_change_without_red_test"]
+```
+
+A test link `<path>::<name>[::<name>...]` resolves when the file exists and contains every name as a whole word; otherwise `harness trace` reports `[ERR_DANGLING_TEST]`.
 
 ## Agents and TDD
 
