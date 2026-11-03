@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from project_harness.config import DEFAULT_EXCLUDES, walk_files
+from project_harness.config import walk_files
 from project_harness.model import (
     SUBWORD_PATTERN,
     Glossary,
@@ -136,7 +136,7 @@ def _target_candidates(base: Path, raw_target: str) -> list[Path]:
 
 def _discover_glossary_files(root: Path, glossary: Glossary) -> list[Path]:
     base = root.resolve()
-    excludes = (*DEFAULT_EXCLUDES, ".policy/glossary.toml", "glossary.toml", *glossary.exclude)
+    excludes = (".policy/glossary.toml", *glossary.exclude)
     discovered = [
         file_path
         for raw_target in glossary.paths

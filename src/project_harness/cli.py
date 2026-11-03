@@ -9,23 +9,24 @@ from pathlib import Path
 
 from project_harness.arch import check_arch
 from project_harness.config import (
+    POLICY_DIR,
+    git,
     load_arch,
     load_glossary,
     load_symbols,
     load_traceability,
-    resolve_root,
 )
 from project_harness.core import check_local, check_merge
 from project_harness.glossary import check_glossary
 from project_harness.symbol import check_symbols
 from project_harness.traceability import check_trace
 
-DEFAULT_CONFIGS: dict[str, Path] = {
-    "check": Path(".policy/workflow.toml"),
-    "arch": Path(".policy/arch.toml"),
-    "glossary": Path(".policy/glossary.toml"),
-    "symbol": Path(".policy/symbols.toml"),
-    "trace": Path(".policy/traceability.toml"),
+POLICY_FILES: dict[str, str] = {
+    "check": "workflow.toml",
+    "arch": "arch.toml",
+    "glossary": "glossary.toml",
+    "symbol": "symbols.toml",
+    "trace": "traceability.toml",
 }
 
 
@@ -33,15 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
     """Create the argument parser for the unified harness CLI."""
     parser = argparse.ArgumentParser(
         prog="harness",
-        description="Enforce .policy rules and check branches against a stable base.",
+        description="Enforce .policy rules of the current git work tree and check branches "
+        "against a stable base.",
     )
-    parser.add_argument("--config", type=Path, default=None, help="Path to policy TOML file.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     check_parser = subparsers.add_parser("check", help="Run policy checks or the merge check.")
-    check_parser.add_argument(
-        "--config", type=Path, default=argparse.SUPPRESS, help="Path to workflow TOML file."
-    )
     check_parser.add_argument(
         "--base", help="Base git ref; check HEAD against it using the base policy rules."
     )
@@ -55,40 +53,34 @@ def build_parser() -> argparse.ArgumentParser:
         ("symbol", "Run symbol naming check (.policy/symbols.toml)."),
         ("trace", "Run traceability graph check (.policy/traceability.toml)."),
     ):
-        sub = subparsers.add_parser(cmd, help=desc)
-        sub.add_argument("--config", type=Path, default=argparse.SUPPRESS, help=desc)
+        subparsers.add_parser(cmd, help=desc)
 
     return parser
 
 
-def _config_path(args: argparse.Namespace) -> Path:
-    return args.config if args.config is not None else DEFAULT_CONFIGS[args.command]
-
-
-def _dispatch(args: argparse.Namespace, config_path: Path) -> list[str]:
-    root = resolve_root(config_path)
+def _dispatch(args: argparse.Namespace) -> list[str]:
+    root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
     if args.command == "check":
         if args.base is not None:
-            config_rel = config_path.resolve().relative_to(root).as_posix()
-            return check_merge(root, config_rel, args.base, args.branch)
-        return check_local(root, config_path)
+            return check_merge(root, args.base, args.branch)
+        return check_local(root)
+    policy_path = root / POLICY_DIR / POLICY_FILES[args.command]
     if args.command == "arch":
-        return check_arch(root, load_arch(config_path))
+        return check_arch(root, load_arch(policy_path))
     if args.command == "glossary":
-        return check_glossary(root, load_glossary(config_path))
+        return check_glossary(root, load_glossary(policy_path))
     if args.command == "symbol":
-        return check_symbols(root, load_symbols(config_path))
-    return check_trace(root, load_traceability(config_path))
+        return check_symbols(root, load_symbols(policy_path))
+    return check_trace(root, load_traceability(policy_path))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run harness CLI and return POSIX exit code (0=pass, 1=violations, 2=config error)."""
     args = build_parser().parse_args(argv)
-    config_path = _config_path(args)
     try:
-        violations = _dispatch(args, config_path)
+        violations = _dispatch(args)
     except (OSError, ValueError, SyntaxError) as error:
-        print(f"{config_path} [ERR_CONFIG]: {error}", file=sys.stderr)
+        print(f"{POLICY_DIR}/{POLICY_FILES[args.command]} [ERR_CONFIG]: {error}", file=sys.stderr)
         return 2
     for violation in violations:
         print(violation)

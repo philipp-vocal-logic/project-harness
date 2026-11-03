@@ -7,10 +7,12 @@ import shlex
 import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from project_harness.arch import check_arch
 from project_harness.config import (
+    POLICY_DIR,
+    git,
     load_workflow,
     parse_arch,
     parse_glossary,
@@ -36,6 +38,7 @@ BUILTIN_POLICY_FILES: tuple[str, ...] = (
     "symbols.toml",
     "traceability.toml",
 )
+WORKFLOW_FILE = f"{POLICY_DIR}/workflow.toml"
 FAILURE_LINE_PATTERN = re.compile(r"^(?:FAILED|ERROR)\b")
 
 
@@ -76,10 +79,8 @@ def check_builtin_policies(root: Path, policy_texts: Mapping[str, str]) -> list[
     return violations
 
 
-def _load_local_policies(config_path: Path) -> dict[str, str]:
-    policy_dir = config_path.resolve().parent
-    if policy_dir.name != ".policy":
-        return {}
+def _load_local_policies(root: Path) -> dict[str, str]:
+    policy_dir = root / POLICY_DIR
     return {
         name: (policy_dir / name).read_text(encoding="utf-8")
         for name in BUILTIN_POLICY_FILES
@@ -87,21 +88,11 @@ def _load_local_policies(config_path: Path) -> dict[str, str]:
     }
 
 
-def check_local(root: Path, config_path: Path) -> list[str]:
+def check_local(root: Path) -> list[str]:
     """Run built-in .policy/*.toml checks and workflow.toml commands on the working tree."""
-    workflow = load_workflow(config_path)
-    violations = check_builtin_policies(root, _load_local_policies(config_path))
+    workflow = load_workflow(root / WORKFLOW_FILE)
+    violations = check_builtin_policies(root, _load_local_policies(root))
     return violations + run_commands(root, workflow.checks)
-
-
-def _git(root: Path, *args: str) -> str:
-    completed = subprocess.run(
-        ["git", "-C", str(root), *args], capture_output=True, text=True, check=False
-    )
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or "git command failed"
-        raise ValueError(f"git {' '.join(args)}: {detail}")
-    return completed.stdout
 
 
 def _split_nul(output: str) -> list[str]:
@@ -115,7 +106,7 @@ def _exception_violations(
     if not branch.startswith(prefix):
         return [f"branch '{branch}' [ERR_BRANCH]: exception requires a '{prefix}*' branch"]
     pathspecs = [f":(literal){rel_path}" for rel_path in paths]
-    log = _git(
+    log = git(
         root, "log", "-z", "--no-merges", "--format=%h%n%B", f"{merge_base}..HEAD", "--", *pathspecs
     )
     commits = [entry.partition("\n") for entry in _split_nul(log)]
@@ -153,13 +144,13 @@ def _run_against_base_source(
     ]
     with tempfile.TemporaryDirectory() as scratch:
         tree = Path(scratch) / "red"
-        _git(root, "worktree", "add", "--detach", "--quiet", str(tree), "HEAD")
+        git(root, "worktree", "add", "--detach", "--quiet", str(tree), "HEAD")
         try:
             pathspecs = [f":(glob){pattern}" for pattern in patterns]
-            _git(tree, "restore", f"--source={merge_base}", "--worktree", "--", *pathspecs)
+            git(tree, "restore", f"--source={merge_base}", "--worktree", "--", *pathspecs)
             return _run(tree, workflow.test_command)
         finally:
-            _git(root, "worktree", "remove", "--force", str(tree))
+            git(root, "worktree", "remove", "--force", str(tree))
 
 
 def _red_violations(
@@ -181,38 +172,33 @@ def _red_violations(
     return [red, *problems]
 
 
-def _load_policies(root: Path, ref: str, config_rel: str) -> dict[str, str]:
-    parent_rel = PurePosixPath(config_rel).parent.as_posix()
-    if parent_rel != ".policy":
-        return {}
-    existing = set(_git(root, "ls-tree", "--name-only", ref, ".policy/").splitlines())
+def _load_policies(root: Path, ref: str) -> dict[str, str]:
+    existing = set(git(root, "ls-tree", "--name-only", ref, f"{POLICY_DIR}/").splitlines())
     return {
-        name: _git(root, "show", f"{ref}:.policy/{name}")
+        name: git(root, "show", f"{ref}:{POLICY_DIR}/{name}")
         for name in BUILTIN_POLICY_FILES
-        if f".policy/{name}" in existing
+        if f"{POLICY_DIR}/{name}" in existing
     }
 
 
-def check_merge(root: Path, config_rel: str, base_ref: str, branch: str | None) -> list[str]:
+def check_merge(root: Path, base_ref: str, branch: str | None) -> list[str]:
     """Check HEAD against base_ref using the workflow and policy rules stored on base_ref.
 
     Once the protected-path and red checks pass, a branch whose approved protected changes
     include .policy/ files is judged by its own .policy/ files; all others by base_ref's.
     """
-    if _git(root, "status", "--porcelain").strip():
+    if git(root, "status", "--porcelain").strip():
         return ["working-tree [ERR_DIRTY]: uncommitted changes present"]
-    workflow = parse_workflow(_git(root, "show", f"{base_ref}:{config_rel}"))
-    merge_base = _git(root, "merge-base", base_ref, "HEAD").strip()
-    branch_name = branch or _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
-    changed = _split_nul(
-        _git(root, "diff", "-z", "--name-only", "--no-renames", merge_base, "HEAD")
-    )
+    workflow = parse_workflow(git(root, "show", f"{base_ref}:{WORKFLOW_FILE}"))
+    merge_base = git(root, "merge-base", base_ref, "HEAD").strip()
+    branch_name = branch or git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    changed = _split_nul(git(root, "diff", "-z", "--name-only", "--no-renames", merge_base, "HEAD"))
     violations = _protected_violations(root, workflow, merge_base, branch_name, changed)
     violations += _red_violations(root, workflow, merge_base, branch_name, changed)
     if violations:
         return violations
     approved = matching_paths(changed, workflow.protected_paths)
-    policy_ref = "HEAD" if any(path.startswith(".policy/") for path in approved) else base_ref
-    checks = parse_workflow(_git(root, "show", f"{policy_ref}:{config_rel}")).checks
-    policy_violations = check_builtin_policies(root, _load_policies(root, policy_ref, config_rel))
+    policy_ref = "HEAD" if any(path.startswith(f"{POLICY_DIR}/") for path in approved) else base_ref
+    checks = parse_workflow(git(root, "show", f"{policy_ref}:{WORKFLOW_FILE}")).checks
+    policy_violations = check_builtin_policies(root, _load_policies(root, policy_ref))
     return policy_violations + run_commands(root, checks)

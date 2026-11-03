@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -28,6 +29,11 @@ from project_harness.model import (
 )
 from project_harness.symbol import check_symbol_text
 from project_harness.traceability import check_trace
+
+
+def git_init(repo: Path) -> None:
+    """Make repo a git work tree so harness can list its files."""
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
 
 
 @pytest.mark.parametrize(
@@ -137,6 +143,7 @@ def test_builtin_checkers_detect_arch_glossary_symbol_and_trace_violations(
     sym_hits = check_symbol_text("src/app.py", "def fetch_temp():\n    return 1\n", symbols)
     assert len(sym_hits) == 2 and all("[ERR_SYMBOL]" in hit for hit in sym_hits)
 
+    git_init(tmp_path)
     (tmp_path / "stories").mkdir()
     (tmp_path / "reqs").mkdir()
     (tmp_path / "stories" / "US-1.toml").write_text('status = "APPROVED"\n', encoding="utf-8")
@@ -169,9 +176,11 @@ def test_run_commands_passes_dot_policy_args_without_copying_to_root(tmp_path: P
 
 
 def test_cli_returns_exit_2_on_missing_config(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    code = main(["--config", str(tmp_path / "missing.toml"), "check"])
+    git_init(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    code = main(["check"])
     assert code == 2
     assert "[ERR_CONFIG]" in capsys.readouterr().err
 
@@ -221,6 +230,7 @@ TEST_LINK_TRACE_TOML = (
 
 
 def test_trace_checks_requirement_side_test_links(tmp_path: Path) -> None:
+    git_init(tmp_path)
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_calc.py").write_text(
         "class TestCalc:\n    def test_add(self) -> None:\n        pass\n", encoding="utf-8"
@@ -274,3 +284,8 @@ def test_symbol_checker_rejects_non_python_files() -> None:
 def test_parse_glossary_rejects_unused_similarity_threshold() -> None:
     with pytest.raises(ValueError, match=r"unknown keys in glossary\.settings"):
         parse_glossary("[settings]\nsimilarity_threshold = 0.65\n")
+
+
+def test_parse_arch_rejects_rule_without_max_lines_or_forbid() -> None:
+    with pytest.raises(ValueError, match="needs max_lines or forbid"):
+        parse_arch('[[rules]]\nfiles = ["src/*.py"]\nfix = "slim"\n')

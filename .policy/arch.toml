@@ -21,10 +21,10 @@ files = ["src/project_harness/config.py"]
 max_lines = 300
 forbid = [
     "^\\s*(from|import)\\s+project_harness\\.(cli|core|arch|glossary|symbol|traceability)\\b",
-    "^\\s*(from|import)\\s+(sys|argparse|subprocess)\\b",
+    "^\\s*(from|import)\\s+(sys|argparse)\\b",
     "\\bprint\\s*\\(",
 ]
-fix = "Import direction is cli -> core -> checkers -> config -> model. Keep config.py limited to parsing and validating .policy/*.toml files and file discovery."
+fix = "Import direction is cli -> core -> checkers -> config -> model. Keep config.py limited to parsing and validating .policy/*.toml files and git-based file discovery."
 
 [[rules]]
 files = [

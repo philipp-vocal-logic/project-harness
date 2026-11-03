@@ -91,11 +91,6 @@ class ArchRule:
     max_lines: int | None = None
     forbid: tuple[re.Pattern[str], ...] = ()
 
-    @property
-    def forbids_files(self) -> bool:
-        """Return True if the rule has no content checks and therefore forbids matching files."""
-        return self.max_lines is None and not self.forbid
-
 
 @dataclass(frozen=True, slots=True)
 class Term:

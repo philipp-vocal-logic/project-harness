@@ -22,4 +22,7 @@ tests = [
     "tests/test_unit.py::test_parse_traceability_rejects_invalid_test_rules",
     "tests/test_unit.py::test_symbol_checker_rejects_non_python_files",
     "tests/test_unit.py::test_parse_glossary_rejects_unused_similarity_threshold",
+    "tests/test_unit.py::test_parse_arch_rejects_rule_without_max_lines_or_forbid",
+    "tests/test_integration.py::test_check_runs_from_subdirectory_and_rejects_config_option",
+    "tests/test_integration.py::test_policies_skip_git_ignored_files",
 ]

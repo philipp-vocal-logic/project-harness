@@ -1,9 +1,9 @@
-"""Loading and validation of .policy/*.toml configurations and file discovery."""
+"""Loading and validation of .policy/*.toml configurations and git-based file discovery."""
 
 from __future__ import annotations
 
-import os
 import re
+import subprocess
 import tomllib
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
@@ -24,9 +24,7 @@ from project_harness.model import (
     matches_any,
 )  # fmt: skip
 
-DEFAULT_EXCLUDES: tuple[str, ...] = (
-    ".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", "*.egg-info"
-)  # fmt: skip
+POLICY_DIR = ".policy"
 ALLOWED_WORKFLOW_KEYS = frozenset(
     {"protected_paths", "checks", "source_paths", "test_command", "red_exit_codes"}
 )
@@ -40,32 +38,30 @@ ALLOWED_TRACE_RULE_KEYS = frozenset(
 )
 
 
-def resolve_root(config_path: Path) -> Path:
-    """Resolve the project root directory from a configuration file path."""
-    resolved = config_path.resolve()
-    is_policy = resolved.parent.name == ".policy"
-    return resolved.parent.parent if is_policy else resolved.parent
+def git(cwd: Path, *args: str) -> str:
+    """Run git in cwd and return stdout; raise ValueError with git's message on failure."""
+    completed = subprocess.run(
+        ["git", "-C", str(cwd), *args], capture_output=True, text=True, check=False
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "git command failed"
+        raise ValueError(f"git {' '.join(args)}: {detail}")
+    return completed.stdout
 
 
 def walk_files(
     root: Path, include: Sequence[str] = ("**",), exclude: Sequence[str] = ()
 ) -> list[Path]:
-    """Walk root and return sorted files matching include globs and not exclude globs."""
+    """Return sorted tracked and non-ignored files under root matching include, not exclude."""
     base = root.resolve()
-    combined_exclude = (*DEFAULT_EXCLUDES, *exclude)
-    matched: list[Path] = []
-    for dir_path, dir_names, file_names in os.walk(base):
-        rel_dir = Path(dir_path).relative_to(base)
-        dir_names[:] = sorted(
-            name
-            for name in dir_names
-            if not is_excluded((rel_dir / name).as_posix(), combined_exclude)
-        )
-        for name in sorted(file_names):
-            rel_posix = (rel_dir / name).as_posix()
-            if not is_excluded(rel_posix, combined_exclude) and matches_any(rel_posix, include):
-                matched.append(base / rel_posix)
-    return matched
+    listed = git(base, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    return [
+        base / rel_path
+        for rel_path in sorted({part for part in listed.split("\0") if part})
+        if matches_any(rel_path, include)
+        and not is_excluded(rel_path, exclude)
+        and (base / rel_path).is_file()
+    ]
 
 
 def _require_table(raw_table: Any, scope: str) -> dict[str, Any]:
@@ -166,6 +162,8 @@ def _parse_arch_rule(raw_rule: Any) -> ArchRule:
     if max_lines is not None and (not isinstance(max_lines, int) or max_lines < 1):
         raise ValueError("'arch.rules.max_lines' must be a positive integer")
     forbid = _compile_regexes(_str_tuple(table.get("forbid", []), "arch.rules.forbid"))
+    if max_lines is None and not forbid:
+        raise ValueError(f"arch.rules for {list(files)} needs max_lines or forbid")
     ignore = _glob_tuple(table.get("ignore", []), "arch.rules.ignore")
     return ArchRule(files, _require_str(table, "fix", "arch.rules"), ignore, max_lines, forbid)
 
