@@ -181,20 +181,24 @@ def _red_violations(
     return [red, *problems]
 
 
-def _load_base_policies(root: Path, base_ref: str, config_rel: str) -> dict[str, str]:
+def _load_policies(root: Path, ref: str, config_rel: str) -> dict[str, str]:
     parent_rel = PurePosixPath(config_rel).parent.as_posix()
     if parent_rel != ".policy":  # glossary: ignore[policy]
         return {}
-    existing = set(_git(root, "ls-tree", "--name-only", base_ref, ".policy/").splitlines())
+    existing = set(_git(root, "ls-tree", "--name-only", ref, ".policy/").splitlines())
     return {
-        name: _git(root, "show", f"{base_ref}:.policy/{name}")
+        name: _git(root, "show", f"{ref}:.policy/{name}")
         for name in BUILTIN_POLICY_FILES
         if f".policy/{name}" in existing
     }
 
 
 def check_merge(root: Path, config_rel: str, base_ref: str, branch: str | None) -> list[str]:
-    """Check HEAD against base_ref using the workflow and policy rules stored on base_ref."""
+    """Check HEAD against base_ref using the workflow and policy rules stored on base_ref.
+
+    Once the protected-path and red checks pass, a branch whose approved protected changes
+    include .policy/ files is judged by its own .policy/ files; all others by base_ref's.
+    """
     if _git(root, "status", "--porcelain").strip():
         return ["working-tree [ERR_DIRTY]: uncommitted changes present"]
     workflow = parse_workflow(_git(root, "show", f"{base_ref}:{config_rel}"))
@@ -207,7 +211,8 @@ def check_merge(root: Path, config_rel: str, base_ref: str, branch: str | None) 
     violations += _red_violations(root, workflow, merge_base, branch_name, changed)
     if violations:
         return violations
-    policy_violations = check_builtin_policies(
-        root, _load_base_policies(root, base_ref, config_rel)
-    )
-    return policy_violations + run_commands(root, workflow.checks)
+    approved = matching_paths(changed, workflow.protected_paths)
+    policy_ref = "HEAD" if any(path.startswith(".policy/") for path in approved) else base_ref
+    checks = parse_workflow(_git(root, "show", f"{policy_ref}:{config_rel}")).checks
+    policy_violations = check_builtin_policies(root, _load_policies(root, policy_ref, config_rel))
+    return policy_violations + run_commands(root, checks)

@@ -45,7 +45,7 @@ def init_git_repo(repo: Path, branch: str) -> Path:
     git_run(repo, "config", "user.email", "test@example.com")
     git_run(repo, "config", "user.name", "Test User")
     (repo / ".gitignore").write_text("__pycache__/\n*.py[cod]\n", encoding="utf-8")
-    (repo / ".policy").mkdir()
+    (repo / ".policy").mkdir(exist_ok=True)
     (repo / ".policy" / "workflow.toml").write_text(WORKFLOW_TOML, encoding="utf-8")
     (repo / "src").mkdir()
     (repo / "src" / "calc.py").write_text("def add(a: int, b: int) -> int:\n    return 0\n")
@@ -179,3 +179,20 @@ def test_merge_check_runs_base_checks_after_rules_pass(
     assert merge_check(cfg, "docs/readme") == 1
     assert "[ERR_CHECK]: FAILED " in capsys.readouterr().out
     assert main(["--config", str(cfg), "check"]) == 1
+
+
+def test_approved_policy_branch_is_judged_by_its_own_policies(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    strict = '[[rules]]\nfiles = ["docs/*.md"]\nforbid = ["TODO"]\nfix = "Finish docs."\n'
+    (tmp_path / ".policy").mkdir()
+    (tmp_path / ".policy" / "arch.toml").write_text(strict, encoding="utf-8")
+    cfg = init_git_repo(tmp_path, "policy/docs")
+    commit_file(tmp_path, "docs/plan.md", "TODO\n", "docs: plan")
+    assert merge_check(cfg, "policy/docs") == 1
+    assert "docs/plan.md:1:1 [ERR_ARCH]" in capsys.readouterr().out
+
+    relaxed = strict.replace('forbid = ["TODO"]', "max_lines = 10")
+    commit_file(tmp_path, ".policy/arch.toml", relaxed, "policy: allow TODO", "Reason: drafts")
+    assert merge_check(cfg, "policy/docs") == 0
+    assert capsys.readouterr().out == ""

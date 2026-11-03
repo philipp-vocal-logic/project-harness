@@ -30,7 +30,9 @@ Reads `.policy/*.toml` from the base ref, diffs `merge-base..HEAD` (`-z --no-ren
 |---|---|---|
 | Protected paths | no file matching `protected_paths` changed | `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
 | Red check | if `source_paths` changed: `test_command` on the branch tests with the base source exits in `red_exit_codes` | `refactor/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
-| Built-in policies & checks | all base `.policy/*.toml` checkers and `workflow.checks` exit 0 on HEAD | — |
+| Built-in policies & checks | all `.policy/*.toml` checkers and `workflow.checks` exit 0 on HEAD | — |
+
+Protected paths and the red check always use the base rules. Built-in policies and checks use the base `.policy/` too, unless the branch's approved protected changes include `.policy/` files: then the branch is judged by its own `.policy/`, so policy format changes can merge.
 
 The working tree must be clean. Every exception is traceable in git history:
 
