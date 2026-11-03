@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
 import re
 import shlex
-import shutil
 import subprocess
 import tempfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 
 from project_harness.config import parse_workflow
@@ -28,42 +26,9 @@ FAILURE_LINE_PATTERN = re.compile(
 )
 
 
-@contextlib.contextmanager
-def materialize_policy_files(root: Path) -> Iterator[frozenset[str]]:
-    """Temporarily copy .policy/*.toml files to root so standalone CLIs resolve root."""
-    policy_dir = root / ".policy"
-    created: list[Path] = []
-    names: set[str] = set()
-    try:
-        for source in sorted(policy_dir.glob("*.toml")):
-            if source.name == "workflow.toml":
-                continue
-            target = root / source.name
-            if not target.exists():
-                shutil.copyfile(source, target)
-                created.append(target)
-            elif target.read_bytes() != source.read_bytes():
-                raise ValueError(f"{target.name} in root differs from .policy/{source.name}")
-            names.add(source.name)
-        yield frozenset(names)
-    finally:
-        for path in created:
-            path.unlink(missing_ok=True)
-
-
-def _normalize_command(command: str, materialized: frozenset[str]) -> list[str]:
-    tokens = shlex.split(command)
-    return [
-        token.removeprefix(".policy/")
-        if token.startswith(".policy/") and token.removeprefix(".policy/") in materialized
-        else token
-        for token in tokens
-    ]
-
-
-def _run(cwd: Path, command: str, materialized: frozenset[str]) -> tuple[int, str]:
+def _run(cwd: Path, command: str) -> tuple[int, str]:
     """Run command in cwd; return its exit code and the most relevant output line."""
-    args = _normalize_command(command, materialized)
+    args = shlex.split(command)
     completed = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
     raw_lines = f"{completed.stdout}\n{completed.stderr}".splitlines()
     lines = [line.strip() for line in raw_lines if line.strip()]
@@ -77,11 +42,10 @@ def _run(cwd: Path, command: str, materialized: frozenset[str]) -> tuple[int, st
 def run_commands(root: Path, checks: Sequence[str]) -> list[str]:
     """Execute check commands in root; each must exit 0."""
     violations: list[str] = []
-    with materialize_policy_files(root) as materialized:
-        for command in checks:
-            code, detail = _run(root, command, materialized)
-            if code != 0:
-                violations.append(f"{command} [ERR_CHECK]: {detail}")
+    for command in checks:
+        code, detail = _run(root, command)
+        if code != 0:
+            violations.append(f"{command} [ERR_CHECK]: {detail}")
     return violations
 
 
@@ -148,7 +112,7 @@ def _run_against_base_source(
         try:
             pathspecs = [f":(glob){pattern}" for pattern in patterns]
             _git(tree, "restore", f"--source={merge_base}", "--worktree", "--", *pathspecs)
-            return _run(tree, workflow.test_command, frozenset())
+            return _run(tree, workflow.test_command)
         finally:
             _git(root, "worktree", "remove", "--force", str(tree))
 

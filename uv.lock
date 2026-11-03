@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 [[package]]
 name = "archcheck"
 version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/architecture-checker-cli.git?branch=main#bd993ff4f557a1bedcca3149ed926d2d22714c38" }
+source = { git = "https://github.com/philipp-vocal-logic/architecture-checker-cli.git?branch=main#5ed5afb7be9e9d32dcc982f447f6a34da7fc01c3" }
 
 [[package]]
 name = "colorama"
@@ -19,7 +19,7 @@ wheels = [
 [[package]]
 name = "glossary-checker-cli"
 version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/glossary-checker-cli.git?branch=main#3b690bc958ef968edef82153d91635b1fe8adfe5" }
+source = { git = "https://github.com/philipp-vocal-logic/glossary-checker-cli.git?branch=main#4e4071b189712effbb86bf816607b1693736ad5e" }
 dependencies = [
     { name = "pathspec" },
 ]
@@ -140,7 +140,7 @@ wheels = [
 [[package]]
 name = "symbol-checker-cli"
 version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/symbol-checker-cli.git?branch=main#81b1734d5b068ec4c5e6c1645b21bc292a4e5133" }
+source = { git = "https://github.com/philipp-vocal-logic/symbol-checker-cli.git?branch=main#75c03577c9025374ff0350dbf4a3a68461d7bf3d" }
 dependencies = [
     { name = "pathspec" },
 ]
@@ -148,4 +148,4 @@ dependencies = [
 [[package]]
 name = "trace-check"
 version = "0.1.0"
-source = { git = "https://github.com/philipp-vocal-logic/tracability-checker-cli.git?branch=main#3d260fc7068a3a3c711abfdb03b1760715dde5e2" }
+source = { git = "https://github.com/philipp-vocal-logic/tracability-checker-cli.git?branch=main#3903d41de85b8f77bde8eee00cc622e075165073" }

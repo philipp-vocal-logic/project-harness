@@ -9,7 +9,7 @@ checks = [
     "uv run glossary --config .policy/glossary.toml",
     "uv run symbol --config .policy/symbols.toml",
     "uv run architecture --config .policy/arch.toml",
-    "uv run trace-check .policy/traceability.toml",
+    "uv run trace-check --config .policy/traceability.toml",
     "uv run pytest -q",
 ]
 # Red check: when source_paths change, test_command must exit with one of red_exit_codes on the

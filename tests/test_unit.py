@@ -10,7 +10,7 @@ from trace_check import trace
 
 from project_harness.cli import main
 from project_harness.config import load_workflow, parse_workflow
-from project_harness.core import materialize_policy_files, run_commands
+from project_harness.core import run_commands
 from project_harness.model import has_reason, matches_any, matches_glob, matching_paths
 
 
@@ -98,30 +98,20 @@ def test_load_workflow_reads_file(tmp_path: Path) -> None:
 
 
 @trace("REQ-POLICY")
-def test_materialize_policy_files_copies_and_cleans_up(tmp_path: Path) -> None:
+def test_run_commands_passes_dot_policy_args_without_copying_to_root(tmp_path: Path) -> None:
     policy_dir = tmp_path / ".policy"
     policy_dir.mkdir()
-    (policy_dir / "workflow.toml").write_text("# workflow\n", encoding="utf-8")
     (policy_dir / "arch.toml").write_text("# arch\n", encoding="utf-8")
-    (policy_dir / "glossary.toml").write_text("# glossary\n", encoding="utf-8")
-    (tmp_path / "glossary.toml").write_text("# glossary\n", encoding="utf-8")
-
-    with materialize_policy_files(tmp_path) as materialized:
-        assert materialized == frozenset({"arch.toml", "glossary.toml"})
-        assert (tmp_path / "arch.toml").is_file()
-        assert not (tmp_path / "workflow.toml").exists()
-
-    assert not (tmp_path / "arch.toml").exists()
-    assert (tmp_path / "glossary.toml").read_text(encoding="utf-8") == "# glossary\n"
-
-    # A differing root file would shadow the .policy file: refuse instead of using it
-    (tmp_path / "glossary.toml").write_text("# stale root glossary\n", encoding="utf-8")
-    with (
-        pytest.raises(ValueError, match=r"glossary\.toml in root differs"),
-        materialize_policy_files(tmp_path),
-    ):
-        pass
-    assert not (tmp_path / "arch.toml").exists()
+    script = tmp_path / "verify_args.py"
+    script.write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        "assert sys.argv[1:] == ['--config', '.policy/arch.toml']\n"
+        "assert not Path('arch.toml').exists()\n",
+        encoding="utf-8",
+    )
+    cmd = f"{Path(sys.executable).as_posix()} {script.as_posix()} --config .policy/arch.toml"
+    assert run_commands(tmp_path, [cmd]) == []
 
 
 @trace("REQ-POLICY")

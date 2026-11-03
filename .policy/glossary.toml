@@ -9,8 +9,6 @@ exclude = [
     "*.egg-info/",
     ".policy/glossary.toml",
     ".policy/symbols.toml",
-    "glossary.toml",
-    "symbols.toml",
     "uv.lock",
 ]
 similarity_threshold = 0.65

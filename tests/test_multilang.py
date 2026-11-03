@@ -84,7 +84,7 @@ def _build_c89_workflow_toml(c_runner: Path) -> str:
         f'"{PYTHON_BIN} -m glossary_checker_cli.cli --config .policy/glossary.toml", '
         f'"{PYTHON_BIN} -m symbol_checker.cli --config .policy/symbols.toml", '
         f'"{PYTHON_BIN} -m archcheck --config .policy/arch.toml", '
-        f'"{PYTHON_BIN} -m trace_check.cli .policy/traceability.toml"'
+        f'"{PYTHON_BIN} -m trace_check.cli --config .policy/traceability.toml"'
     )
     run_cmd = f"{PYTHON_BIN} {c_runner.as_posix()}"
     return f"""[workflow]
@@ -238,7 +238,7 @@ def test_cpp_and_rust_policy_checkers_integration(
         ARCH_TOML.replace("src/**/*.c", f"src/**/*{ext}"), encoding="utf-8"
     )
     for cmd in [
-        [PYTHON_BIN, "-m", "trace_check.cli", str(tmp_path / "traceability.toml")],
+        [PYTHON_BIN, "-m", "trace_check.cli", "--config", str(tmp_path / "traceability.toml")],
         [PYTHON_BIN, "-m", "symbol_checker.cli", "--config", str(tmp_path / "symbols.toml")],
         [PYTHON_BIN, "-m", "archcheck", "--config", str(tmp_path / "arch.toml")],
     ]:
