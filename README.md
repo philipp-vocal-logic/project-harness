@@ -108,7 +108,7 @@ title = "Require source changes to come with tests that fail against the base so
 tests = ["tests/test_integration.py::test_merge_check_rejects_source_change_without_red_test"]
 ```
 
-On `feat/*` and `fix/*` branches, agents and developers can add new requirements and append new test links. Deleting a requirement, editing its `title`, or removing an existing test link requires a `policy/*` branch with a `Reason: <why>` line.
+On `feat/*`, `fix/*`, and `refactor/*` branches, agents and developers can add new requirements and add or rename test links. Deleting a requirement, editing its `title`, or reducing its linked tests requires a `policy/*` branch with a `Reason: <why>` line.
 
 ## Agents and TDD
 

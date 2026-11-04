@@ -2,9 +2,9 @@
 files = ["src/**/*.py"]
 forbid = [
     "^\\s*(from|import)\\s+(pytest|tests|tokenize)\\b",
-    "^\\s*from\\s+\\.",
+    "^\\s*from\\s+(\\.|project_harness\\s+import\\b)",
 ]
-fix = "Use absolute project_harness imports and keep src free of test or tokenize dependencies."
+fix = "Use 'from project_harness.<module> import ...' and keep src free of test or tokenize dependencies."
 
 [[rules]]
 files = ["src/project_harness/model.py"]

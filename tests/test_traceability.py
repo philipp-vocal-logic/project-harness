@@ -108,10 +108,13 @@ def test_check_requirement_changes_detects_weakened_requirements() -> None:
     additive_head = {
         "REQ-1": parse_requirement(
             'id = "REQ-1"\ntitle = "Keep"\n'
-            'tests = ["tests/test_a.py::test_one", "tests/test_a.py::test_extra"]\n',
+            'tests = ["tests/test_a.py::test_renamed", "tests/test_a.py::test_extra"]\n',
             "trace/REQ-1.toml",
         ),
-        "REQ-2": base["REQ-2"],
+        "REQ-2": parse_requirement(
+            'id = "REQ-2"\ntitle = "Delete"\ntests = ["tests/test_a.py::test_two_renamed"]\n',
+            "trace/REQ-2.toml",
+        ),
         "REQ-3": parse_requirement(
             'id = "REQ-3"\ntitle = "New"\ntests = ["tests/test_a.py::test_three"]\n',
             "trace/REQ-3.toml",

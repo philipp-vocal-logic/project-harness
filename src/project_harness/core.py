@@ -26,7 +26,6 @@ from project_harness.model import (
     Requirement,
     Workflow,
     has_reason,
-    matches_glob,
     matching_paths,
 )
 from project_harness.symbol import check_symbols
@@ -41,17 +40,23 @@ WORKFLOW_FILE = f"{POLICY_DIRECTORY}/workflow.toml"
 FAILURE_LINE_PATTERN = re.compile(r"^(?:FAILED|ERROR)\b")
 
 
+def _failure_detail(lines: Sequence[str], returncode: int) -> str:
+    if not lines:
+        return f"exit code {returncode}"
+    if match := next((line for line in lines if FAILURE_LINE_PATTERN.search(line)), None):
+        return match
+    if len(lines) > 1 and lines[1].startswith("-->"):
+        return f"{lines[1].removeprefix('-->').strip()}: {lines[0]}"
+    return lines[0]
+
+
 def _run(cwd: Path, command: str) -> tuple[int, str]:
     """Run command in cwd; return its exit code and the most relevant output line."""
     args = shlex.split(command)
     completed = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
     raw_lines = f"{completed.stdout}\n{completed.stderr}".splitlines()
     lines = [line.strip() for line in raw_lines if line.strip()]
-    detail = next(
-        (line for line in lines if FAILURE_LINE_PATTERN.search(line)),
-        lines[0] if lines else f"exit code {completed.returncode}",
-    )
-    return completed.returncode, detail
+    return completed.returncode, _failure_detail(lines, completed.returncode)
 
 
 def run_commands(root: Path, checks: Sequence[str]) -> list[str]:
@@ -152,17 +157,20 @@ def _run_against_base_source(
     root: Path, workflow: Workflow, merge_base: str, sources: list[str]
 ) -> tuple[int, str]:
     """Run test_command on HEAD with the source files reset to merge_base."""
-    patterns = [
-        pattern
-        for pattern in workflow.source_paths
-        if any(matches_glob(relative_path, pattern) for relative_path in sources)
-    ]
     with tempfile.TemporaryDirectory() as scratch:
         tree = Path(scratch) / "red"
         git(root, "worktree", "add", "--detach", "--quiet", str(tree), "HEAD")
         try:
-            pathspecs = [f":(glob){pattern}" for pattern in patterns]
-            git(tree, "restore", f"--source={merge_base}", "--worktree", "--", *pathspecs)
+            pathspecs = [f":(literal){relative_path}" for relative_path in sources]
+            git(
+                tree,
+                "restore",
+                f"--source={merge_base}",
+                "--staged",
+                "--worktree",
+                "--",
+                *pathspecs,
+            )
             return _run(tree, workflow.test_command)
         finally:
             git(root, "worktree", "remove", "--force", str(tree))

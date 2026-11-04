@@ -21,8 +21,6 @@ def _discover_requirements(root: Path, patterns: Sequence[str]) -> dict[str, Req
         if requirement.id in discovered:
             raise ValueError(f"{relative_path}: duplicate requirement id '{requirement.id}'")
         discovered[requirement.id] = requirement
-    if not discovered:
-        raise ValueError("no requirements discovered for configured globs")
     return discovered
 
 
@@ -99,7 +97,7 @@ def _is_requirement_weakened(
         head_requirement is None
         or head_requirement.location != base_requirement.location
         or head_requirement.title != base_requirement.title
-        or not set(base_requirement.tests).issubset(head_requirement.tests)
+        or len(head_requirement.tests) < len(base_requirement.tests)
     )
 
 

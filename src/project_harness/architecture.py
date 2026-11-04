@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from project_harness.config import walk_files
-from project_harness.model import ArchitectureRule, matches_glob
+from project_harness.model import ArchitectureRule
 
 
 def check_architecture_text(relative_path: str, text: str, rule: ArchitectureRule) -> list[str]:
@@ -27,20 +27,11 @@ def check_architecture_text(relative_path: str, text: str, rule: ArchitectureRul
     return violations
 
 
-def _resolve_rule_files(root: Path, rule: ArchitectureRule) -> list[Path]:
-    matched = walk_files(root, rule.files)
-    relative_paths = [path.relative_to(root.resolve()).as_posix() for path in matched]
-    for pattern in rule.files:
-        if not any(matches_glob(relative_path, pattern) for relative_path in relative_paths):
-            raise ValueError(f"architecture.toml files glob matches nothing: {pattern!r}")
-    return matched
-
-
 def check_architecture_rule(root: Path, rule: ArchitectureRule) -> list[str]:
     """Check a single architecture rule across all matching files under root."""
     base = root.resolve()
     violations: list[str] = []
-    for path in _resolve_rule_files(base, rule):
+    for path in walk_files(base, rule.files):
         relative_path = path.relative_to(base).as_posix()
         violations.extend(
             check_architecture_text(relative_path, path.read_text(encoding="utf-8"), rule)

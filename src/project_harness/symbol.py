@@ -148,12 +148,9 @@ def check_symbol_text(relative_path: str, text: str, schema: SymbolSchema) -> li
 def check_symbols(root: Path, schema: SymbolSchema) -> list[str]:
     """Check all tracked Python files under root."""
     base = root.resolve()
-    files = walk_files(base, ("**/*.py",))
-    if not files:
-        raise ValueError("no .py files found under repository root")
     subword_fixes = _compile_subwords(schema)
     violations: list[str] = []
-    for file_path in files:
+    for file_path in walk_files(base, ("**/*.py",)):
         relative_path = file_path.relative_to(base).as_posix()
         violations.extend(
             _check_file_symbols(

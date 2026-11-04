@@ -60,6 +60,12 @@ def test_cli_returns_exit_2_on_missing_config(
             "ERROR tests/test_calc.py - ImportError: cannot import name 'add'",
             id="pytest_collection_error_line",
         ),
+        pytest.param(
+            "F401 [*] `os` imported but unused\n  --> src/a.py:3:8\n",
+            "",
+            "src/a.py:3:8: F401 [*] `os` imported but unused",
+            id="arrow_location_line",
+        ),
         pytest.param("Would reformat: src/a.py\n", "", "Would reformat: src/a.py", id="first_line"),
         pytest.param("", "", "exit code 1", id="empty_stdout_and_stderr_fallback_edge"),
     ],
