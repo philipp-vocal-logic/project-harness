@@ -1,31 +1,3 @@
-[schema]
-chain = ["Story", "Requirement"]
-
-[statuses]
-Story = ["DRAFT", "APPROVED", "DEPRECATED"]
-Requirement = ["DRAFT", "APPROVED", "DEPRECATED"]
-
-[locations]
-Story = "trace/stories/*.toml"
-Requirement = "trace/requirements/*.toml"
-
-[[rules]]
-id = "APPROVED-STORY-NEEDS-REQ"
-source_type = "Story"
-when_status = "APPROVED"
-target_type = "Requirement"
-target_status = ["APPROVED"]
-
-[[rules]]
-id = "APPROVED-REQ-NEEDS-STORY"
-source_type = "Requirement"
-when_status = "APPROVED"
-target_type = "Story"
-target_status = ["APPROVED"]
-
-# target_type "Test" requires >= 1 entry in the node's tests = ["<path>::<test name>"] list.
-[[rules]]
-id = "APPROVED-REQ-NEEDS-TEST"
-source_type = "Requirement"
-when_status = "APPROVED"
-target_type = "Test"
+[traceability]
+requirements = ["trace/*.toml"]
+tests = ["tests/**/test_*.py"]

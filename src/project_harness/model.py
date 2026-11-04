@@ -11,9 +11,7 @@ from pathlib import Path, PurePosixPath
 REASON_PATTERN = re.compile(r"^Reason:[ \t]*\S", re.MULTILINE)
 POLICY_BRANCH_PREFIX = "policy/"
 REFACTOR_BRANCH_PREFIX = "refactor/"
-DEPRECATED_STATUS = "DEPRECATED"
-TEST_TYPE = "Test"
-NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+REQUIREMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 SYMBOL_KINDS: frozenset[str] = frozenset({"module", "class", "function", "method"})
 SYMBOL_VISIBILITIES: frozenset[str] = frozenset({"all", "public", "private"})
 
@@ -79,39 +77,22 @@ class Symbol:
 
 
 @dataclass(frozen=True, slots=True)
-class Node:
-    """A single traceability node in the project graph."""
+class Requirement:
+    """A requirement specification linking domain intent to verification tests."""
 
     id: str
-    type: str
-    status: str
-    links: tuple[str, ...] = ()
-    location: str = ""
+    title: str
     tests: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class TraceabilityRule:
-    """A declarative status and link coverage constraint in .policy/traceability.toml.
-
-    A target_type of TEST_TYPE requires at least one entry in the node's tests list.
-    """
-
-    id: str
-    source_type: str
-    when_status: str
-    target_type: str
-    target_status: tuple[str, ...] = ()
+    location: str = ""
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class TraceabilityConfig:
-    """Parsed .policy/traceability.toml schema, statuses, locations, and rules."""
+    """Parsed .policy/traceability.toml requirement and test file globs."""
 
-    chain: tuple[str, ...]
-    statuses: dict[str, frozenset[str]]
-    locations: dict[str, str]
-    rules: tuple[TraceabilityRule, ...]
+    requirements: tuple[str, ...] = ("trace/*.toml",)
+    tests: tuple[str, ...] = ("tests/**/test_*.py",)
 
 
 def _match_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...]) -> bool:

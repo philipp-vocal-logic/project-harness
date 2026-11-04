@@ -10,14 +10,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from project_harness.model import (
+    REQUIREMENT_ID_PATTERN,
     SYMBOL_KINDS,
     SYMBOL_VISIBILITIES,
-    TEST_TYPE,
     ArchitectureRule,
+    Requirement,
     SymbolRule,
     SymbolSchema,
     TraceabilityConfig,
-    TraceabilityRule,
     Workflow,
     matches_any,
     split_subwords,
@@ -30,10 +30,8 @@ ALLOWED_WORKFLOW_KEYS = frozenset(
 ALLOWED_ARCHITECTURE_KEYS = frozenset({"files", "fix", "max_lines", "forbid"})
 ALLOWED_SYMBOL_KEYS = frozenset({"forbidden_subwords"})
 ALLOWED_SYMBOL_RULE_KEYS = frozenset({"files", "kinds", "visibility", "pattern", "fix"})
-ALLOWED_TRACEABILITY_KEYS = frozenset({"schema", "statuses", "locations", "rules"})
-ALLOWED_TRACEABILITY_RULE_KEYS = frozenset(
-    {"id", "source_type", "when_status", "target_type", "target_status"}
-)
+ALLOWED_TRACEABILITY_KEYS = frozenset({"requirements", "tests"})
+ALLOWED_REQUIREMENT_KEYS = frozenset({"id", "title", "description", "tests"})
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -219,49 +217,62 @@ def load_symbols(path: Path) -> SymbolSchema:
     return parse_symbols(path.read_text(encoding="utf-8"))
 
 
-def _parse_traceability_rule(raw_rule: Any, chain: tuple[str, ...]) -> TraceabilityRule:
-    table = _require_table(raw_rule, "traceability.rules")
-    _check_keys(table, ALLOWED_TRACEABILITY_RULE_KEYS, "traceability.rules")
-    rule_id = _require_string(table, "id", "traceability.rules")
-    source_type = _require_string(table, "source_type", rule_id)
-    target_type = _require_string(table, "target_type", rule_id)
-    if source_type not in chain or target_type not in (*chain, TEST_TYPE):
-        raise ValueError(f"{rule_id}: types must be chain types or '{TEST_TYPE}'")
-    is_test = target_type == TEST_TYPE
-    if is_test and "target_status" in table:
-        raise ValueError(f"{rule_id}: target_status is not allowed for target_type '{TEST_TYPE}'")
-    status_key = f"{rule_id}.status"
-    target_status = () if is_test else _parse_string_tuple(table.get("target_status"), status_key)
-    when_status = _require_string(table, "when_status", rule_id)
-    return TraceabilityRule(rule_id, source_type, when_status, target_type, target_status)
+def _is_test_link(test_link: str) -> bool:
+    file_part, separator, name_part = test_link.partition("::")
+    posix = PurePosixPath(file_part)
+    return (
+        bool(file_part and separator)
+        and all(name_part.split("::"))
+        and not posix.is_absolute()
+        and ".." not in posix.parts
+    )
+
+
+def _parse_test_links(raw_tests: Any, relative_path: str) -> tuple[str, ...]:
+    if not isinstance(raw_tests, list) or not all(isinstance(s, str) for s in raw_tests):
+        raise ValueError(f"{relative_path}: 'tests' must be a list of strings")
+    cleaned = tuple(entry.strip() for entry in raw_tests)
+    if len(set(cleaned)) != len(cleaned) or not all(map(_is_test_link, cleaned)):
+        raise ValueError(
+            f"{relative_path}: 'tests' must be unique '<relative path>::<test name>' links"
+        )
+    return cleaned
+
+
+def _parse_requirement_id(table: dict[str, Any], relative_path: str) -> str:
+    stem = PurePosixPath(relative_path).stem
+    requirement_id = _require_string(table, "id", relative_path)
+    if requirement_id != stem or not REQUIREMENT_ID_PATTERN.match(requirement_id):
+        raise ValueError(f"{relative_path}: id '{requirement_id}' must match filename '{stem}'")
+    return requirement_id
+
+
+def parse_requirement(text: str, relative_path: str) -> Requirement:
+    """Parse and validate a requirement TOML document."""
+    raw = tomllib.loads(text)
+    _check_keys(raw, ALLOWED_REQUIREMENT_KEYS, relative_path)
+    requirement_id = _parse_requirement_id(raw, relative_path)
+    title = _require_string(raw, "title", relative_path)
+    description = raw.get("description", "")
+    if not isinstance(description, str):
+        raise ValueError(f"{relative_path}: 'description' must be a string")
+    tests = _parse_test_links(raw.get("tests", []), relative_path)
+    return Requirement(requirement_id, title, tests, relative_path, description.strip())
 
 
 def parse_traceability(text: str) -> TraceabilityConfig:
     """Parse and validate the text of a .policy/traceability.toml file."""
     raw = tomllib.loads(text)
-    _check_keys(raw, ALLOWED_TRACEABILITY_KEYS, "traceability.toml")
-    schema = _require_table(raw.get("schema", {}), "traceability.schema")
-    _check_keys(schema, frozenset({"chain"}), "traceability.schema")
-    chain = _parse_string_tuple(schema.get("chain"), "traceability.schema.chain")
-    if len(chain) < 2 or len(set(chain)) != len(chain) or TEST_TYPE in chain:
-        raise ValueError(f"traceability.schema.chain needs >= 2 unique types, not '{TEST_TYPE}'")
-    statuses_table = _require_table(raw.get("statuses", {}), "traceability.statuses")
-    _check_keys(statuses_table, frozenset(chain), "traceability.statuses")
-    statuses = {
-        kind: frozenset(_parse_string_tuple(statuses_table.get(kind), f"statuses.{kind}"))
-        for kind in chain
-    }
-    locations_table = _require_table(raw.get("locations", {}), "traceability.locations")
-    _check_keys(locations_table, frozenset(chain), "traceability.locations")
-    locations = {
-        kind: _parse_glob_tuple([locations_table.get(kind)], f"locations.{kind}")[0]
-        for kind in chain
-    }
-    raw_rules = raw.get("rules", [])
-    if not isinstance(raw_rules, list):
-        raise ValueError("'traceability.rules' must be a list of tables")
-    rules = tuple(_parse_traceability_rule(entry, chain) for entry in raw_rules)
-    return TraceabilityConfig(chain, statuses, locations, rules)
+    _check_keys(raw, frozenset({"traceability"}), "traceability.toml")
+    table = _require_table(raw.get("traceability", {}), "traceability")
+    _check_keys(table, ALLOWED_TRACEABILITY_KEYS, "traceability")
+    requirements = _parse_glob_tuple(
+        table.get("requirements", ["trace/*.toml"]), "traceability.requirements"
+    )
+    tests = _parse_glob_tuple(table.get("tests", ["tests/**/test_*.py"]), "traceability.tests")
+    if not requirements or not tests:
+        raise ValueError("traceability.requirements and traceability.tests must not be empty")
+    return TraceabilityConfig(requirements, tests)
 
 
 def load_traceability(path: Path) -> TraceabilityConfig:

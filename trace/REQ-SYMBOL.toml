@@ -1,0 +1,9 @@
+id = "REQ-SYMBOL"
+title = "Enforce Python AST symbol naming schemas, forbidden subwords, and canonical replacements from .policy/symbols.toml"
+tests = [
+    "tests/test_model.py::test_split_subwords_and_subword_forms_handle_camel_case_acronyms_and_plurals",
+    "tests/test_self_check.py::test_project_adheres_to_own_symbols",
+    "tests/test_symbol.py::test_check_symbol_detects_forbidden_subwords_and_replacements",
+    "tests/test_symbol.py::test_check_symbol_enforces_schema_rules_by_kind_visibility_and_files",
+    "tests/test_symbol.py::test_symbol_checker_rejects_non_python_files_and_multi_word_rules",
+]

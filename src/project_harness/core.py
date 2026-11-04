@@ -15,6 +15,7 @@ from project_harness.config import (
     git,
     load_workflow,
     parse_architecture,
+    parse_requirement,
     parse_symbols,
     parse_traceability,
     parse_workflow,
@@ -22,13 +23,14 @@ from project_harness.config import (
 from project_harness.model import (
     POLICY_BRANCH_PREFIX,
     REFACTOR_BRANCH_PREFIX,
+    Requirement,
     Workflow,
     has_reason,
     matches_glob,
     matching_paths,
 )
 from project_harness.symbol import check_symbols
-from project_harness.traceability import check_traceability
+from project_harness.traceability import check_requirement_changes, check_traceability
 
 BUILTIN_POLICY_FILES: tuple[str, ...] = (
     "architecture.toml",
@@ -103,32 +105,46 @@ def _exception_violations(
 ) -> list[str]:
     """Allow changes to paths only on a prefix branch whose commits touching them give a Reason."""
     if not branch.startswith(prefix):
-        return [f"branch '{branch}' [ERR_BRANCH]: exception requires a '{prefix}*' branch"]
+        return [
+            f"branch '{branch}' [ERR_BRANCH]: exception requires a '{prefix}*' branch "
+            f"(Fix: switch to a '{prefix}*' branch)"
+        ]
     pathspecs = [f":(literal){relative_path}" for relative_path in paths]
     log = git(
         root, "log", "-z", "--no-merges", "--format=%h%n%B", f"{merge_base}..HEAD", "--", *pathspecs
     )
     commits = [entry.partition("\n") for entry in _split_null(log)]
     if not commits:
-        return [f"branch '{branch}' [ERR_REASON]: no commit records these changes"]
+        return [
+            f"branch '{branch}' [ERR_REASON]: no commit records these changes "
+            "(Fix: commit changes with a 'Reason: <why>' line)"
+        ]
     return [
-        f"{sha} [ERR_REASON]: missing 'Reason: <why>' line"
+        f"{sha} [ERR_REASON]: missing 'Reason: <why>' line "
+        f"(Fix: add a 'Reason: <why>' line to commit {sha})"
         for sha, _, message in commits
         if not has_reason(message)
     ]
 
 
 def _protected_violations(
-    root: Path, workflow: Workflow, merge_base: str, branch: str, changed: list[str]
+    root: Path,
+    workflow: Workflow,
+    merge_base: str,
+    branch: str,
+    changed: list[str],
+    weakened_requirements: Sequence[str] = (),
 ) -> list[str]:
-    touched = matching_paths(changed, workflow.protected_paths)
+    touched = sorted({*matching_paths(changed, workflow.protected_paths), *weakened_requirements})
     if not touched:
         return []
     reasons = _exception_violations(root, merge_base, branch, POLICY_BRANCH_PREFIX, touched)
     if not reasons:
         return []
     return [
-        f"{relative_path} [ERR_PROTECTED]: path is protected by policy" for relative_path in touched
+        f"{relative_path} [ERR_PROTECTED]: path is protected by policy "
+        f"(Fix: revert '{relative_path}' or use a 'policy/*' branch with 'Reason: <why>')"
+        for relative_path in touched
     ] + reasons
 
 
@@ -166,7 +182,9 @@ def _red_violations(
         return []
     red = (
         f"{workflow.test_command} [ERR_RED]: expected exit in {list(workflow.red_exit_codes)} "
-        f"against base source, got exit {code}: {detail}"
+        f"against base source, got exit {code}: {detail} "
+        "(Fix: add a test that fails against the base source or use a 'refactor/*' branch "
+        "with 'Reason: <why>')"
     )
     return [red, *reasons]
 
@@ -182,6 +200,33 @@ def _load_policies(root: Path, reference: str) -> dict[str, str]:
     }
 
 
+def _load_reference_requirements(
+    root: Path, reference: str, patterns: Sequence[str]
+) -> dict[str, Requirement]:
+    listed = git(root, "ls-tree", "-r", "--name-only", reference).splitlines()
+    requirements: dict[str, Requirement] = {}
+    for relative_path in matching_paths(listed, patterns):
+        if relative_path.endswith(".toml"):
+            text = git(root, "show", f"{reference}:{relative_path}")
+            requirement = parse_requirement(text, relative_path)
+            requirements[requirement.id] = requirement
+    return requirements
+
+
+def _weakened_requirements(
+    root: Path, merge_base: str, base_policies: Mapping[str, str], changed: Sequence[str]
+) -> list[str]:
+    if (
+        "traceability.toml" not in base_policies
+        or f"{POLICY_DIRECTORY}/traceability.toml" in changed
+    ):
+        return []
+    patterns = parse_traceability(base_policies["traceability.toml"]).requirements
+    base_requirements = _load_reference_requirements(root, merge_base, patterns)
+    head_requirements = _load_reference_requirements(root, "HEAD", patterns)
+    return check_requirement_changes(base_requirements, head_requirements)
+
+
 def check_merge(root: Path, base_reference: str, branch: str | None) -> list[str]:
     """Check HEAD against base_reference using the workflow and policy rules on base_reference.
 
@@ -189,20 +234,25 @@ def check_merge(root: Path, base_reference: str, branch: str | None) -> list[str
     include .policy/ files is judged by its own .policy/ files; all others by base_reference's.
     """
     if git(root, "status", "--porcelain").strip():
-        return ["working-tree [ERR_DIRTY]: uncommitted changes present"]
+        return [
+            "working-tree [ERR_DIRTY]: uncommitted changes present "
+            "(Fix: commit or revert changes before running the merge check)"
+        ]
     workflow = parse_workflow(git(root, "show", f"{base_reference}:{WORKFLOW_FILE}"))
+    base_policies = _load_policies(root, base_reference)
     merge_base = git(root, "merge-base", base_reference, "HEAD").strip()
     branch_name = branch or git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
     changed = _split_null(
         git(root, "diff", "-z", "--name-only", "--no-renames", merge_base, "HEAD")
     )
-    violations = _protected_violations(root, workflow, merge_base, branch_name, changed)
+    weakened = _weakened_requirements(root, merge_base, base_policies, changed)
+    violations = _protected_violations(root, workflow, merge_base, branch_name, changed, weakened)
     violations += _red_violations(root, workflow, merge_base, branch_name, changed)
     if violations:
         return violations
     approved = matching_paths(changed, workflow.protected_paths)
     has_policy_change = any(path.startswith(f"{POLICY_DIRECTORY}/") for path in approved)
+    policies = _load_policies(root, "HEAD") if has_policy_change else base_policies
     policy_reference = "HEAD" if has_policy_change else base_reference
     checks = parse_workflow(git(root, "show", f"{policy_reference}:{WORKFLOW_FILE}")).checks
-    policy_violations = check_builtin_policies(root, _load_policies(root, policy_reference))
-    return policy_violations + run_commands(root, checks)
+    return check_builtin_policies(root, policies) + run_commands(root, checks)

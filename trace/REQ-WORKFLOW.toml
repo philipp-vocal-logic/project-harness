@@ -1,0 +1,14 @@
+id = "REQ-WORKFLOW"
+title = "Validate .policy/workflow.toml configuration and run checker commands"
+tests = [
+    "tests/test_config.py::test_load_workflow_reads_file",
+    "tests/test_config.py::test_parse_workflow_reads_all_keys",
+    "tests/test_config.py::test_parse_workflow_rejects_invalid_configs",
+    "tests/test_core.py::test_cli_returns_exit_2_on_missing_config",
+    "tests/test_core.py::test_run_commands_parses_failure_details",
+    "tests/test_core.py::test_run_commands_passes_dot_policy_args_without_copying_to_root",
+    "tests/test_integration.py::test_check_runs_from_subdirectory_and_rejects_config_option",
+    "tests/test_integration.py::test_merge_check_runs_base_checks_after_rules_pass",
+    "tests/test_integration.py::test_policies_skip_git_ignored_files",
+    "tests/test_self_check.py::test_project_workflow_config_is_valid",
+]

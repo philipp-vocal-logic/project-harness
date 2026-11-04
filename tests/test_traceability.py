@@ -1,4 +1,4 @@
-"""Unit tests for .policy/traceability.toml parsing and node/test link checking."""
+"""Unit tests for .policy/traceability.toml, requirement parsing, and bidirectional AST checks."""
 
 from __future__ import annotations
 
@@ -7,16 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from project_harness.config import parse_traceability
-from project_harness.traceability import check_traceability
-
-TEST_LINK_TRACEABILITY_TOML = (
-    '[schema]\nchain = ["Story", "Requirement"]\n'
-    '[statuses]\nStory = ["APPROVED"]\nRequirement = ["APPROVED"]\n'
-    '[locations]\nStory = "stories/*.toml"\nRequirement = "requirements/*.toml"\n'
-    '[[rules]]\nid = "REQ-NEEDS-TEST"\nsource_type = "Requirement"\n'
-    'when_status = "APPROVED"\ntarget_type = "Test"\n'
-)
+from project_harness.config import parse_requirement, parse_traceability
+from project_harness.traceability import check_requirement_changes, check_traceability
 
 
 def _git_init(repository: Path) -> None:
@@ -24,65 +16,116 @@ def _git_init(repository: Path) -> None:
     subprocess.run(["git", "init", "-q", str(repository)], check=True)
 
 
-def test_check_traceability_detects_dangling_links(tmp_path: Path) -> None:
-    _git_init(tmp_path)
-    (tmp_path / "stories").mkdir()
-    (tmp_path / "requirements").mkdir()
-    (tmp_path / "stories" / "US-1.toml").write_text('status = "APPROVED"\n', encoding="utf-8")
-    (tmp_path / "requirements" / "REQ-1.toml").write_text(
-        'status = "APPROVED"\nlinks = ["MISSING"]\n', encoding="utf-8"
-    )
-    traceability_config = parse_traceability(
-        '[schema]\nchain = ["Story", "Requirement"]\n'
-        '[statuses]\nStory = ["APPROVED"]\nRequirement = ["APPROVED"]\n'
-        '[locations]\nStory = "stories/*.toml"\nRequirement = "requirements/*.toml"\n'
-    )
-    violations = check_traceability(tmp_path, traceability_config)
-    assert any("[ERR_DANGLING_LINK]" in violation for violation in violations)
+def test_parse_traceability_validates_config() -> None:
+    default_config = parse_traceability("")
+    assert default_config.requirements == ("trace/*.toml",)
+    assert default_config.tests == ("tests/**/test_*.py",)
 
-
-def test_traceability_checks_requirement_side_test_links(tmp_path: Path) -> None:
-    _git_init(tmp_path)
-    (tmp_path / "tests").mkdir()
-    (tmp_path / "tests" / "test_calc.py").write_text(
-        "class TestCalc:\n    def test_add(self) -> None:\n        pass\n", encoding="utf-8"
+    custom = parse_traceability(
+        '[traceability]\nrequirements = ["specs/*.toml"]\ntests = ["tests/*.py"]\n'
     )
-    (tmp_path / "stories").mkdir()
-    (tmp_path / "stories" / "US-1.toml").write_text('status = "APPROVED"\n', encoding="utf-8")
-    (tmp_path / "requirements").mkdir()
-    requirements = {
-        "REQ-1": '["tests/test_calc.py::TestCalc::test_add"]',
-        "REQ-2": '["tests/test_calc.py::test_sub", "tests/missing.py::test_add"]',
-        "REQ-3": "[]",
-    }
-    for requirement_id, tests in requirements.items():
-        (tmp_path / "requirements" / f"{requirement_id}.toml").write_text(
-            f'status = "APPROVED"\ntests = {tests}\n', encoding="utf-8"
-        )
-    traceability_config = parse_traceability(TEST_LINK_TRACEABILITY_TOML)
-    assert check_traceability(tmp_path, traceability_config) == [
-        "requirements/REQ-2.toml: REQ-2 [ERR_DANGLING_TEST]: "
-        "test 'tests/test_calc.py::test_sub' does not exist",
-        "requirements/REQ-2.toml: REQ-2 [ERR_DANGLING_TEST]: "
-        "test 'tests/missing.py::test_add' does not exist",
-        "requirements/REQ-3.toml: REQ-3 [ERR_MISSING_LINK] (REQ-NEEDS-TEST): requires >= 1 test",
-    ]
+    assert custom.requirements == ("specs/*.toml",)
+    assert custom.tests == ("tests/*.py",)
 
-    (tmp_path / "requirements" / "REQ-3.toml").write_text(
-        'status = "APPROVED"\ntests = ["tests/test_calc.py"]\n', encoding="utf-8"
-    )
-    with pytest.raises(ValueError, match="relative path"):
-        check_traceability(tmp_path, traceability_config)
+    for bad_toml in (
+        "unknown = 1\n",
+        'traceability = "bad"\n',
+        "[traceability]\nrequirements = []\n",
+        "[traceability]\ntests = []\n",
+    ):
+        with pytest.raises(ValueError):
+            parse_traceability(bad_toml)
 
 
 @pytest.mark.parametrize(
-    ("rule_tail", "expected_match"),
+    ("toml_text", "expected_match"),
     [
-        ('target_type = "Test"\ntarget_status = ["APPROVED"]\n', "target_status is not allowed"),
-        ('target_type = "Tests"\n', "types must be chain types"),
+        ('id = "REQ-1"\ntitle = "ok"\nunknown = 1\n', "unknown keys"),
+        ('id = "OTHER"\ntitle = "ok"\n', "must match filename 'REQ-1'"),
+        ('id = "REQ-1"\n', "'title' must be a non-empty string"),
+        ('id = "REQ-1"\ntitle = "ok"\ndescription = 1\n', "'description' must be a string"),
+        ('id = "REQ-1"\ntitle = "ok"\ntests = "bad"\n', "'tests' must be a list of strings"),
+        ('id = "REQ-1"\ntitle = "ok"\ntests = ["tests/test_a.py"]\n', "unique '<relative path>"),
+        (
+            'id = "REQ-1"\ntitle = "ok"\ntests = ["tests/a.py::test_x", "tests/a.py::test_x"]\n',
+            "unique '<relative path>",
+        ),
     ],
 )
-def test_parse_traceability_rejects_invalid_test_rules(rule_tail: str, expected_match: str) -> None:
-    text = TEST_LINK_TRACEABILITY_TOML.replace('target_type = "Test"\n', rule_tail)
+def test_parse_requirement_rejects_invalid_fields(toml_text: str, expected_match: str) -> None:
     with pytest.raises(ValueError, match=expected_match):
-        parse_traceability(text)
+        parse_requirement(toml_text, "trace/REQ-1.toml")
+
+
+def test_check_traceability_verifies_bidirectional_ast_links(tmp_path: Path) -> None:
+    _git_init(tmp_path)
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_calc.py").write_text(
+        "# test_comment_only is not a real AST test\n"
+        "class TestCalc:\n"
+        "    def test_add(self) -> None:\n"
+        "        pass\n\n"
+        "def test_untraced() -> None:\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "trace").mkdir()
+    requirements = {
+        "REQ-1": 'title = "Add"\ntests = ["tests/test_calc.py::TestCalc::test_add"]',
+        "REQ-2": 'title = "Sub"\ntests = ["tests/test_calc.py::test_comment_only"]',
+        "REQ-3": 'title = "Empty"\ntests = []',
+    }
+    for requirement_id, body in requirements.items():
+        (tmp_path / "trace" / f"{requirement_id}.toml").write_text(
+            f'id = "{requirement_id}"\n{body}\n', encoding="utf-8"
+        )
+
+    violations = check_traceability(tmp_path, parse_traceability(""))
+    assert violations == [
+        "trace/REQ-2.toml: REQ-2 [ERR_DANGLING_TEST]: "
+        "test 'tests/test_calc.py::test_comment_only' does not exist "
+        "(Fix: define 'tests/test_calc.py::test_comment_only' or remove the stale link "
+        "on a 'policy/*' branch)",
+        "trace/REQ-3.toml: REQ-3 [ERR_MISSING_TEST]: requirement has no linked tests "
+        "(Fix: add at least one '<path>::<test_name>' entry to 'tests')",
+        "tests/test_calc.py:6:1 [ERR_UNTRACED_TEST]: "
+        "test 'tests/test_calc.py::test_untraced' is not linked to any requirement "
+        "(Fix: add 'tests/test_calc.py::test_untraced' to a requirement's 'tests' list in trace/)",
+    ]
+
+
+def test_check_requirement_changes_detects_weakened_requirements() -> None:
+    base = {
+        "REQ-1": parse_requirement(
+            'id = "REQ-1"\ntitle = "Keep"\ntests = ["tests/test_a.py::test_one"]\n',
+            "trace/REQ-1.toml",
+        ),
+        "REQ-2": parse_requirement(
+            'id = "REQ-2"\ntitle = "Delete"\ntests = ["tests/test_a.py::test_two"]\n',
+            "trace/REQ-2.toml",
+        ),
+    }
+    additive_head = {
+        "REQ-1": parse_requirement(
+            'id = "REQ-1"\ntitle = "Keep"\n'
+            'tests = ["tests/test_a.py::test_one", "tests/test_a.py::test_extra"]\n',
+            "trace/REQ-1.toml",
+        ),
+        "REQ-2": base["REQ-2"],
+        "REQ-3": parse_requirement(
+            'id = "REQ-3"\ntitle = "New"\ntests = ["tests/test_a.py::test_three"]\n',
+            "trace/REQ-3.toml",
+        ),
+    }
+    assert check_requirement_changes(base, additive_head) == []
+
+    weakened_head = {
+        "REQ-1": parse_requirement(
+            'id = "REQ-1"\ntitle = "Keep"\ntests = []\n',
+            "trace/REQ-1.toml",
+        ),
+    }
+    assert check_requirement_changes(base, weakened_head) == [
+        "trace/REQ-1.toml",
+        "trace/REQ-2.toml",
+    ]

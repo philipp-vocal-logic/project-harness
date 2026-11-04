@@ -14,11 +14,6 @@ harness check
 
 # Merge check of HEAD against the stable base (CI runs this on pull requests)
 harness check --base origin/main --branch "$BRANCH"
-
-# Run individual built-in policy checkers
-harness architecture
-harness symbol
-harness traceability
 ```
 
 `--branch` defaults to the current branch; CI passes it because pull requests check out a detached merge commit.
@@ -29,7 +24,7 @@ Reads `.policy/*.toml` from the base ref, diffs `merge-base..HEAD` (`-z --no-ren
 
 | Rule | Passes when | Exception |
 |---|---|---|
-| Protected paths | no file matching `protected_paths` changed | `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
+| Protected paths & requirements | no file matching `protected_paths` changed, and no base requirement was deleted, renamed, or had test links removed | `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
 | Red check | if `source_paths` changed: `test_command` on the branch tests with the base source exits in `red_exit_codes` | `refactor/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
 | Built-in policies & checks | all `.policy/*.toml` checkers and `workflow.checks` exit 0 on HEAD | — |
 
@@ -98,24 +93,22 @@ jobs:
 ## `.policy/` configuration
 
 - `.policy/workflow.toml`: `protected_paths`, `checks`, and the red check (`source_paths`, `test_command`, `red_exit_codes`).
-- `.policy/traceability.toml`: `harness traceability` node chain (e.g. `Story -> Requirement`), statuses, TOML node locations, and coverage rules. A rule with `target_type = "Test"` requires the node's `tests` list to be non-empty.
-- `.policy/architecture.toml`: `harness architecture` rules; each rule sets `max_lines`, `forbid` line regexes, or both.
-- `.policy/symbols.toml`: `harness symbol` forbidden subwords, canonical replacements, and `[[rules]]` naming schema patterns by symbol kind and visibility in Python identifiers (`.py` files only).
+- `.policy/traceability.toml`: `requirements` (`trace/*.toml`) and `tests` (`tests/**/test_*.py`) globs for bidirectional requirement-to-test AST checking.
+- `.policy/architecture.toml`: file line limits (`max_lines`), forbidden line regexes (`forbid`), or both.
+- `.policy/symbols.toml`: forbidden subwords, canonical replacements, and `[[rules]]` naming schema patterns by symbol kind and visibility in Python identifiers (`.py` files only).
 
 ### Traceability
 
-Stories and requirements are TOML files. Requirements link to their tests, so test code needs no annotations and works in any language:
+Requirements are flat TOML files under `trace/`. Every requirement must link to at least one existing Python AST test (`def test_*` or `class Test*: def test_*`), and every test in `tests/` must be linked by at least one requirement:
 
 ```toml
-# trace/requirements/REQ-RED.toml
+# trace/REQ-RED.toml
 id = "REQ-RED"
-type = "Requirement"
-status = "APPROVED"
-links = ["US-1"]
+title = "Require source changes to come with tests that fail against the base source"
 tests = ["tests/test_integration.py::test_merge_check_rejects_source_change_without_red_test"]
 ```
 
-A test link `<path>::<name>[::<name>...]` resolves when the file exists and contains every name as a whole word; otherwise `harness traceability` reports `[ERR_DANGLING_TEST]`.
+On `feat/*` and `fix/*` branches, agents and developers can add new requirements and append new test links. Deleting a requirement, editing its `title`, or removing an existing test link requires a `policy/*` branch with a `Reason: <why>` line.
 
 ## Agents and TDD
 

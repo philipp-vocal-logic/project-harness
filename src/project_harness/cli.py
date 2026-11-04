@@ -7,23 +7,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from project_harness.architecture import check_architecture
-from project_harness.config import (
-    POLICY_DIRECTORY,
-    git,
-    load_architecture,
-    load_symbols,
-    load_traceability,
-)
+from project_harness.config import git
 from project_harness.core import check_local, check_merge
-from project_harness.symbol import check_symbols
-from project_harness.traceability import check_traceability
-
-POLICY_FILES: dict[str, str] = {
-    "architecture": "architecture.toml",
-    "symbol": "symbols.toml",
-    "traceability": "traceability.toml",
-}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,7 +19,6 @@ def build_parser() -> argparse.ArgumentParser:
         "against a stable base.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-
     check_parser = subparsers.add_parser("check", help="Run policy checks or the merge check.")
     check_parser.add_argument(
         "--base", help="Base git ref; check HEAD against it using the base policy rules."
@@ -42,29 +26,14 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument(
         "--branch", help="Branch name for policy/* and refactor/* exceptions (default: current)."
     )
-
-    for subcommand, description in (
-        ("architecture", "Run architecture rules check (.policy/architecture.toml)."),
-        ("symbol", "Run symbol naming check (.policy/symbols.toml)."),
-        ("traceability", "Run traceability graph check (.policy/traceability.toml)."),
-    ):
-        subparsers.add_parser(subcommand, help=description)
-
     return parser
 
 
 def _dispatch(args: argparse.Namespace) -> list[str]:
     root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
-    if args.command == "check":
-        if args.base is not None:
-            return check_merge(root, args.base, args.branch)
-        return check_local(root)
-    policy_path = root / POLICY_DIRECTORY / POLICY_FILES[args.command]
-    if args.command == "architecture":
-        return check_architecture(root, load_architecture(policy_path))
-    if args.command == "symbol":
-        return check_symbols(root, load_symbols(policy_path))
-    return check_traceability(root, load_traceability(policy_path))
+    if args.base is not None:
+        return check_merge(root, args.base, args.branch)
+    return check_local(root)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

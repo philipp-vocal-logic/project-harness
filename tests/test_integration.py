@@ -110,16 +110,18 @@ def test_merge_check_rejects_protected_change_using_base_rules(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _init_git_repository(tmp_path, "fix/ci")
-    # The branch drops all protection, but the rules are read from main.
     loosened = WORKFLOW_TOML.replace('[".policy/**", "ci/**"]', "[]")
     _commit_file(tmp_path, ".policy/workflow.toml", loosened, "fix: loosen")
     _commit_file(tmp_path, "ci/run.sh", "true\n", "fix: ci", "Reason: needed")
 
     assert _merge_check("fix/ci") == 1
     assert capsys.readouterr().out.splitlines() == [
-        ".policy/workflow.toml [ERR_PROTECTED]: path is protected by policy",
-        "ci/run.sh [ERR_PROTECTED]: path is protected by policy",
-        "branch 'fix/ci' [ERR_BRANCH]: exception requires a 'policy/*' branch",
+        ".policy/workflow.toml [ERR_PROTECTED]: path is protected by policy "
+        "(Fix: revert '.policy/workflow.toml' or use a 'policy/*' branch with 'Reason: <why>')",
+        "ci/run.sh [ERR_PROTECTED]: path is protected by policy "
+        "(Fix: revert 'ci/run.sh' or use a 'policy/*' branch with 'Reason: <why>')",
+        "branch 'fix/ci' [ERR_BRANCH]: exception requires a 'policy/*' branch "
+        "(Fix: switch to a 'policy/*' branch)",
     ]
 
 
@@ -139,8 +141,10 @@ def test_policy_branch_needs_reason_in_every_protected_commit(
     assert _merge_check("policy/ci") == 1
     out = capsys.readouterr().out.splitlines()
     assert out == [
-        "ci/run.sh [ERR_PROTECTED]: path is protected by policy",
-        f"{sha} [ERR_REASON]: missing 'Reason: <why>' line",
+        "ci/run.sh [ERR_PROTECTED]: path is protected by policy "
+        "(Fix: revert 'ci/run.sh' or use a 'policy/*' branch with 'Reason: <why>')",
+        f"{sha} [ERR_REASON]: missing 'Reason: <why>' line "
+        f"(Fix: add a 'Reason: <why>' line to commit {sha})",
     ]
 
     _git_run(tmp_path, "commit", "--amend", "-m", "chore: tweak ci", "-m", "Reason: second step")
@@ -168,7 +172,7 @@ def test_merge_check_rejects_dirty_tree_and_reports_config_errors(
     _init_git_repository(tmp_path, "fix/x")
     (tmp_path / "README.md").write_text("dirty\n", encoding="utf-8")
     assert _merge_check("fix/x") == 1
-    assert capsys.readouterr().out == "working-tree [ERR_DIRTY]: uncommitted changes present\n"
+    assert "[ERR_DIRTY]: uncommitted changes present" in capsys.readouterr().out
 
     (tmp_path / "README.md").unlink()
     assert main(["check", "--base", "missing-ref"]) == 2
@@ -205,6 +209,40 @@ def test_approved_policy_branch_is_judged_by_its_own_policies(
     assert capsys.readouterr().out == ""
 
 
+def test_merge_check_allows_additive_requirements_and_protects_weakening(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / ".policy").mkdir()
+    (tmp_path / ".policy" / "traceability.toml").write_text("[traceability]\n", encoding="utf-8")
+    (tmp_path / "trace").mkdir()
+    (tmp_path / "trace" / "REQ-1.toml").write_text(
+        'id = "REQ-1"\ntitle = "Smoke"\ntests = ["tests/test_smoke.py::test_smoke"]\n',
+        encoding="utf-8",
+    )
+    _init_git_repository(tmp_path, "feat/add")
+    _commit_file(tmp_path, "tests/test_calc.py", ADD_TEST, "test: add")
+    _commit_file(tmp_path, "src/calc.py", ADD_IMPLEMENTATION, "feat: add")
+    _commit_file(
+        tmp_path,
+        "trace/REQ-1.toml",
+        'id = "REQ-1"\ntitle = "Smoke"\n'
+        'tests = ["tests/test_smoke.py::test_smoke", "tests/test_calc.py::test_add"]\n',
+        "trace: link test_add",
+    )
+    assert _merge_check("feat/add") == 0
+    assert capsys.readouterr().out == ""
+
+    _commit_file(
+        tmp_path,
+        "trace/REQ-1.toml",
+        'id = "REQ-1"\ntitle = "Changed"\n'
+        'tests = ["tests/test_smoke.py::test_smoke", "tests/test_calc.py::test_add"]\n',
+        "trace: weaken title",
+    )
+    assert _merge_check("feat/add") == 1
+    assert "trace/REQ-1.toml [ERR_PROTECTED]" in capsys.readouterr().out
+
+
 def test_check_runs_from_subdirectory_and_rejects_config_option(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -222,4 +260,4 @@ def test_policies_skip_git_ignored_files(tmp_path: Path) -> None:
     (tmp_path / "build" / "gen.py").write_text("temp_value = 1\n", encoding="utf-8")
     symbols = '[settings]\nforbidden_subwords = ["temp"]\n'
     (tmp_path / ".policy" / "symbols.toml").write_text(symbols, encoding="utf-8")
-    assert main(["symbol"]) == 0
+    assert main(["check"]) == 0

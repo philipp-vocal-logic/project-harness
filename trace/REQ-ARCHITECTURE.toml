@@ -1,0 +1,7 @@
+id = "REQ-ARCHITECTURE"
+title = "Enforce file line limits and forbidden line patterns from .policy/architecture.toml"
+tests = [
+    "tests/test_architecture.py::test_check_architecture_detects_line_limit_and_forbid_violations",
+    "tests/test_architecture.py::test_parse_architecture_rejects_rule_without_max_lines_or_forbid",
+    "tests/test_self_check.py::test_project_adheres_to_own_architecture",
+]

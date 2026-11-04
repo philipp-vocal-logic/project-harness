@@ -1,0 +1,9 @@
+id = "REQ-TRACEABILITY"
+title = "Enforce bidirectional traceability between requirement TOML files and Python AST test definitions"
+tests = [
+    "tests/test_self_check.py::test_project_adheres_to_own_traceability",
+    "tests/test_traceability.py::test_check_requirement_changes_detects_weakened_requirements",
+    "tests/test_traceability.py::test_check_traceability_verifies_bidirectional_ast_links",
+    "tests/test_traceability.py::test_parse_requirement_rejects_invalid_fields",
+    "tests/test_traceability.py::test_parse_traceability_validates_config",
+]

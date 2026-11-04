@@ -1,0 +1,13 @@
+id = "REQ-PROTECTED"
+title = "Reject protected path and weakened requirement changes at merge time unless on a policy branch with Reason lines"
+tests = [
+    "tests/test_integration.py::test_approved_policy_branch_is_judged_by_its_own_policies",
+    "tests/test_integration.py::test_merge_check_allows_additive_requirements_and_protects_weakening",
+    "tests/test_integration.py::test_merge_check_rejects_dirty_tree_and_reports_config_errors",
+    "tests/test_integration.py::test_merge_check_rejects_protected_change_using_base_rules",
+    "tests/test_integration.py::test_merge_check_sees_renamed_and_non_ascii_protected_paths",
+    "tests/test_integration.py::test_policy_branch_needs_reason_in_every_protected_commit",
+    "tests/test_model.py::test_has_reason",
+    "tests/test_model.py::test_matches_glob_and_matches_any",
+    "tests/test_model.py::test_matching_paths_returns_sorted_unique_matches",
+]

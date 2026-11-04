@@ -6,8 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from project_harness.cli import main
-from project_harness.config import load_workflow
+from project_harness.architecture import check_architecture
+from project_harness.config import (
+    load_architecture,
+    load_symbols,
+    load_traceability,
+    load_workflow,
+)
+from project_harness.symbol import check_symbols
+from project_harness.traceability import check_traceability
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 POLICY_DIRECTORY = REPOSITORY_ROOT / ".policy"
@@ -20,15 +27,17 @@ def _run_in_repository_root(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_project_adheres_to_own_symbols() -> None:
-    assert main(["symbol"]) == 0
+    assert check_symbols(REPOSITORY_ROOT, load_symbols(POLICY_DIRECTORY / "symbols.toml")) == []
 
 
 def test_project_adheres_to_own_architecture() -> None:
-    assert main(["architecture"]) == 0
+    rules = load_architecture(POLICY_DIRECTORY / "architecture.toml")
+    assert check_architecture(REPOSITORY_ROOT, rules) == []
 
 
 def test_project_adheres_to_own_traceability() -> None:
-    assert main(["traceability"]) == 0
+    config = load_traceability(POLICY_DIRECTORY / "traceability.toml")
+    assert check_traceability(REPOSITORY_ROOT, config) == []
 
 
 def test_project_workflow_config_is_valid() -> None:
