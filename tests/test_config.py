@@ -24,7 +24,10 @@ def test_parse_workflow_reads_all_keys() -> None:
 @pytest.mark.parametrize(
     ("toml_text", "expected_match"),
     [
-        ("unknown = 1\n", "unknown keys in workflow.toml"),
+        (
+            "unknown = 1\n",
+            r"unknown keys in workflow\.toml: \['unknown'\] \(allowed: \['workflow'\]\)",
+        ),
         ('workflow = "bad"\n', "'workflow' must be a table"),
         ("[workflow]\nstages = []\n", "unknown keys in workflow"),
         ('[workflow]\nprotected_paths = ["../outside"]\n', "glob must be a relative path"),

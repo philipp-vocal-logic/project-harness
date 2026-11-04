@@ -65,7 +65,7 @@ def _require_table(raw_table: Any, scope: str) -> dict[str, Any]:
 def _check_keys(table: dict[str, Any], allowed: frozenset[str], scope: str) -> None:
     unknown = sorted(set(table) - allowed)
     if unknown:
-        raise ValueError(f"unknown keys in {scope}: {unknown}")
+        raise ValueError(f"unknown keys in {scope}: {unknown} (allowed: {sorted(allowed)})")
 
 
 def _require_string(table: dict[str, Any], key: str, scope: str) -> str:

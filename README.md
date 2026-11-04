@@ -93,9 +93,35 @@ jobs:
 ## `.policy/` configuration
 
 - `.policy/workflow.toml`: `protected_paths`, `checks`, and the red check (`source_paths`, `test_command`, `red_exit_codes`).
-- `.policy/traceability.toml`: `requirements` (`trace/*.toml`) and `tests` (`tests/**/test_*.py`) globs for bidirectional requirement-to-test AST checking.
-- `.policy/architecture.toml`: file line limits (`max_lines`), forbidden line regexes (`forbid`), or both.
-- `.policy/symbols.toml`: forbidden subwords, canonical replacements, and `[[rules]]` naming schema patterns by symbol kind and visibility in Python identifiers (`.py` files only).
+- `.policy/architecture.toml`: `[[rules]]` binding `files` globs to `max_lines`, `forbid` line regexes, or both, with a `fix` message:
+  ```toml
+  [[rules]]
+  files = ["src/**/*.py"]
+  max_lines = 300
+  forbid = ["^\\s*(from|import)\\s+pytest\\b"]
+  fix = "Keep source modules under 300 lines and free of test imports."
+  ```
+- `.policy/symbols.toml`: Python AST identifier checks (`.py` files only) with `[settings]` (`forbidden_subwords`), `[replacements]` (`<canonical> = ["<forbidden>", ...]`), and `[[rules]]` (`files`, `kinds` in `["module", "class", "function", "method"]`, optional `visibility` in `["all", "public", "private"]`, `pattern`, `fix`):
+  ```toml
+  [settings]
+  forbidden_subwords = ["data", "info", "temp", "util"]
+
+  [replacements]
+  config = ["cfg"]
+
+  [[rules]]
+  files = ["src/**/*.py"]
+  kinds = ["function"]
+  visibility = "public"
+  pattern = "^(parse|load|check)_[a-z0-9_]+$"
+  fix = "Prefix public functions with 'parse_', 'load_', or 'check_'."
+  ```
+- `.policy/traceability.toml`: `requirements` and `tests` glob lists for bidirectional requirement-to-test AST checking:
+  ```toml
+  [traceability]
+  requirements = ["trace/*.toml"]
+  tests = ["tests/**/test_*.py"]
+  ```
 
 ### Traceability
 
