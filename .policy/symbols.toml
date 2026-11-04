@@ -19,6 +19,9 @@ forbidden_subwords = [
 ]
 
 [replacements]
+policy = ["convention", "guideline"]
+reason = ["justification", "rationale"]
+violation = ["hit", "problem", "issue", "finding"]
 load = ["fetch", "retrieve", "obtain"]
 check = ["lint", "scan", "analyze", "inspect", "audit"]
 parse = ["decode", "extract"]
@@ -48,7 +51,6 @@ fix = "Name test modules 'test_<subject>'."
 [[rules]]
 files = [
     "src/project_harness/arch.py",
-    "src/project_harness/glossary.py",
     "src/project_harness/symbol.py",
     "src/project_harness/traceability.py",
 ]

@@ -37,8 +37,8 @@ def test_check_trace_detects_dangling_links(tmp_path: Path) -> None:
         '[statuses]\nStory = ["APPROVED"]\nRequirement = ["APPROVED"]\n'
         '[locations]\nStory = "stories/*.toml"\nRequirement = "reqs/*.toml"\n'
     )
-    trace_hits = check_trace(tmp_path, trace_config)
-    assert any("[ERR_DANGLING_LINK]" in hit for hit in trace_hits)
+    violations = check_trace(tmp_path, trace_config)
+    assert any("[ERR_DANGLING_LINK]" in violation for violation in violations)
 
 
 def test_trace_checks_requirement_side_test_links(tmp_path: Path) -> None:

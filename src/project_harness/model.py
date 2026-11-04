@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
@@ -19,7 +19,7 @@ SYMBOL_VISIBILITIES: frozenset[str] = frozenset({"all", "public", "private"})
 
 _UPPER = r"[A-ZÀ-ÖØ-Þ]"
 _LOWER = r"[a-zß-öø-ÿ]"
-SUBWORD_PATTERN = re.compile(
+_SUBWORD_PATTERN = re.compile(
     rf"{_UPPER}{{2,}}s(?={_UPPER}{_LOWER}|\d|_|\b)"
     rf"|{_UPPER}+(?={_UPPER}{_LOWER}|\d|_|\b)"
     rf"|{_UPPER}?{_LOWER}+|\d+"
@@ -39,7 +39,7 @@ class Workflow:
 
 @dataclass(frozen=True, slots=True)
 class ArchRule:
-    """A single .policy/arch.toml rule binding file globs to line limits and forbidden regexes."""
+    """A single .policy/arch.toml rule binding file globs to line limits and forbidden patterns."""
 
     files: tuple[str, ...]
     fix: str
@@ -48,25 +48,8 @@ class ArchRule:
 
 
 @dataclass(frozen=True, slots=True)
-class Term:
-    """An approved canonical term and its forbidden synonyms in .policy/glossary.toml."""
-
-    term: str
-    definition: str
-    forbidden_terms: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class Replacement:
-    """A canonical symbol subword and its disallowed synonyms in .policy/symbols.toml."""
-
-    canonical: str
-    forbidden: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
 class SymbolRule:
-    """A single .policy/symbols.toml rule binding files, symbol kinds, and visibility to a regex."""
+    """A .policy/symbols.toml rule binding files, symbol kinds, and visibility to a pattern."""
 
     files: tuple[str, ...]
     kinds: frozenset[str]
@@ -80,7 +63,7 @@ class SymbolSchema:
     """Parsed .policy/symbols.toml configuration."""
 
     forbidden_subwords: tuple[str, ...] = ()
-    replacements: tuple[Replacement, ...] = ()
+    replacements: dict[str, tuple[str, ...]] = field(default_factory=dict)
     rules: tuple[SymbolRule, ...] = ()
 
 
@@ -164,7 +147,7 @@ def matching_paths(paths: Sequence[str], patterns: Sequence[str]) -> list[str]:
 
 def split_subwords(text: str) -> tuple[str, ...]:
     """Split an identifier or phrase into lowercase subwords."""
-    return tuple(match.group(0).lower() for match in SUBWORD_PATTERN.finditer(text))
+    return tuple(match.group(0).lower() for match in _SUBWORD_PATTERN.finditer(text))
 
 
 def subword_forms(word: str) -> frozenset[str]:

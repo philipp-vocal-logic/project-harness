@@ -18,8 +18,8 @@ def test_check_symbol_detects_forbidden_subwords_and_replacements() -> None:
         "        case {**temp_rest}:\n"
         "            return 1\n"
     )
-    symbol_hits = check_symbol_text("src/app.py", code, symbols)
-    assert len(symbol_hits) == 4 and all("[ERR_SYMBOL]" in hit for hit in symbol_hits)
+    violations = check_symbol_text("src/app.py", code, symbols)
+    assert len(violations) == 4 and all("[ERR_SYMBOL]" in violation for violation in violations)
 
 
 def test_check_symbol_enforces_schema_rules_by_kind_visibility_and_files() -> None:
@@ -53,8 +53,8 @@ def test_check_symbol_enforces_schema_rules_by_kind_visibility_and_files() -> No
         "def _good_private() -> None:\n"
         "    pass\n"
     )
-    hits = check_symbol_text("src/BadMod.py", code, symbols)
-    assert hits == [
+    violations = check_symbol_text("src/BadMod.py", code, symbols)
+    assert violations == [
         "src/BadMod.py:1:1 [ERR_SYMBOL]: module 'BadMod' violates '^[a-z][a-z0-9_]*$' "
         "(Fix: Use lower_snake_case.)",
         "src/BadMod.py:3:1 [ERR_SYMBOL]: class 'bad_class' violates '^_?[A-Z][a-zA-Z0-9]*$' "

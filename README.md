@@ -1,6 +1,6 @@
 # project-harness (`harness`)
 
-Minimal, zero-noise CLI that enforces `.policy/` rules (`arch`, `glossary`, `symbol`, `traceability`, `workflow`) and Git TDD merge gates using only the Python standard library.
+Minimal, zero-noise CLI that enforces `.policy/` rules (`arch`, `symbol`, `traceability`, `workflow`) and Git TDD merge gates using only the Python standard library.
 
 The stable base branch (`main`) is trusted; a branch is checked against it before merging, using the rules stored **on the base branch**, so a branch cannot loosen the rules that judge it.
 
@@ -17,7 +17,6 @@ harness check --base origin/main --branch "$BRANCH"
 
 # Run individual built-in policy checkers
 harness arch
-harness glossary
 harness symbol
 harness trace
 ```
@@ -64,7 +63,7 @@ test_command = "uv run pytest -q"
 red_exit_codes = [1, 2]
 ```
 
-Add `arch.toml`, `glossary.toml`, `symbols.toml`, or `traceability.toml` only when you need them; missing files are skipped.
+Add `arch.toml`, `symbols.toml`, or `traceability.toml` only when you need them; missing files are skipped.
 
 **2. Run the merge check in CI with a pinned harness version.** The pin lives in `.github/`, which is protected, so a branch cannot swap in a looser harness:
 
@@ -101,7 +100,6 @@ jobs:
 - `.policy/workflow.toml`: `protected_paths`, `checks`, and the red check (`source_paths`, `test_command`, `red_exit_codes`).
 - `.policy/traceability.toml`: `harness trace` node chain (e.g. `Story -> Requirement`), statuses, TOML node locations, and coverage rules. A rule with `target_type = "Test"` requires the node's `tests` list to be non-empty.
 - `.policy/arch.toml`: `harness arch` rules; each rule sets `max_lines`, `forbid` line regexes, or both.
-- `.policy/glossary.toml`: `harness glossary` canonical terms and forbidden synonyms.
 - `.policy/symbols.toml`: `harness symbol` forbidden subwords, canonical replacements, and `[[rules]]` naming schema patterns by symbol kind and visibility in Python identifiers (`.py` files only).
 
 ### Traceability

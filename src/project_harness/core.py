@@ -15,12 +15,10 @@ from project_harness.config import (
     git,
     load_workflow,
     parse_arch,
-    parse_glossary,
     parse_symbols,
     parse_traceability,
     parse_workflow,
 )
-from project_harness.glossary import check_glossary
 from project_harness.model import (
     POLICY_BRANCH_PREFIX,
     REFACTOR_BRANCH_PREFIX,
@@ -34,7 +32,6 @@ from project_harness.traceability import check_trace
 
 BUILTIN_POLICY_FILES: tuple[str, ...] = (
     "arch.toml",
-    "glossary.toml",
     "symbols.toml",
     "traceability.toml",
 )
@@ -70,8 +67,6 @@ def check_builtin_policies(root: Path, policy_texts: Mapping[str, str]) -> list[
     violations: list[str] = []
     if "arch.toml" in policy_texts:
         violations.extend(check_arch(root, parse_arch(policy_texts["arch.toml"])))
-    if "glossary.toml" in policy_texts:
-        violations.extend(check_glossary(root, parse_glossary(policy_texts["glossary.toml"])))
     if "symbols.toml" in policy_texts:
         violations.extend(check_symbols(root, parse_symbols(policy_texts["symbols.toml"])))
     if "traceability.toml" in policy_texts:
@@ -125,11 +120,11 @@ def _protected_violations(
     touched = matching_paths(changed, workflow.protected_paths)
     if not touched:
         return []
-    problems = _exception_violations(root, merge_base, branch, POLICY_BRANCH_PREFIX, touched)
-    if not problems:
+    reasons = _exception_violations(root, merge_base, branch, POLICY_BRANCH_PREFIX, touched)
+    if not reasons:
         return []
     return [f"{rel_path} [ERR_PROTECTED]: path is protected by policy" for rel_path in touched] + (
-        problems
+        reasons
     )
 
 
@@ -162,14 +157,14 @@ def _red_violations(
     code, detail = _run_against_base_source(root, workflow, merge_base, sources)
     if code in workflow.red_exit_codes:
         return []
-    problems = _exception_violations(root, merge_base, branch, REFACTOR_BRANCH_PREFIX, sources)
-    if not problems:
+    reasons = _exception_violations(root, merge_base, branch, REFACTOR_BRANCH_PREFIX, sources)
+    if not reasons:
         return []
     red = (
         f"{workflow.test_command} [ERR_RED]: expected exit in {list(workflow.red_exit_codes)} "
         f"against base source, got exit {code}: {detail}"
     )
-    return [red, *problems]
+    return [red, *reasons]
 
 
 def _load_policies(root: Path, ref: str) -> dict[str, str]:

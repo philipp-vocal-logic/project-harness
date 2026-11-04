@@ -19,10 +19,6 @@ def _run_in_repo_root(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(REPO_ROOT)
 
 
-def test_project_adheres_to_own_glossary() -> None:
-    assert main(["glossary"]) == 0
-
-
 def test_project_adheres_to_own_symbols() -> None:
     assert main(["symbol"]) == 0
 

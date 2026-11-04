@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
 from project_harness.config import walk_files
@@ -30,13 +29,6 @@ DIRECT_BINDINGS: dict[type[ast.AST], tuple[str, str]] = {
     ast.arg: ("arg", "symbol"),
     ast.alias: ("asname", "symbol"),
 }
-
-
-@dataclass(frozen=True, slots=True)
-class _CompiledRules:
-    forbidden_subwords: dict[str, str]
-    replacements: dict[str, tuple[str, str]]
-    rules: tuple[SymbolRule, ...]
 
 
 def _is_intrinsic(name: str | None) -> bool:
@@ -89,21 +81,21 @@ def _parse_python_symbols(text: str, file: Path) -> list[Symbol]:
     return symbols
 
 
-def _compile_rules(schema: SymbolSchema) -> _CompiledRules:
-    forbidden_subwords = {
-        form: word for word in schema.forbidden_subwords for form in subword_forms(word)
+def _compile_subwords(schema: SymbolSchema) -> dict[str, str]:
+    fixes = {
+        form: f"contains forbidden subword '{word}' (Fix: replace '{word}' with a domain noun)"
+        for word in schema.forbidden_subwords
+        for form in subword_forms(word)
     }
-    replacements = {
-        form: (raw_forbidden, entry.canonical)
-        for entry in schema.replacements
-        for raw_forbidden in entry.forbidden
-        for form in subword_forms(raw_forbidden)
-    }
-    return _CompiledRules(
-        forbidden_subwords=forbidden_subwords,
-        replacements=replacements,
-        rules=schema.rules,
+    fixes.update(
+        {
+            form: f"uses non-canonical '{raw_forbidden}' (Fix: use '{canonical}')"
+            for canonical, forbidden_list in schema.replacements.items()
+            for raw_forbidden in forbidden_list
+            for form in subword_forms(raw_forbidden)
+        }
     )
+    return fixes
 
 
 def _matches_rule_target(symbol: Symbol, rule: SymbolRule) -> bool:
@@ -115,23 +107,13 @@ def _matches_rule_target(symbol: Symbol, rule: SymbolRule) -> bool:
     return is_private if rule.visibility == "private" else not is_private
 
 
-def _check_single_symbol(symbol: Symbol, rules: _CompiledRules) -> list[str]:
+def _check_single_symbol(symbol: Symbol, subword_fixes: dict[str, str]) -> list[str]:
     rel_path = symbol.file.as_posix()
-    violations: list[str] = []
-    for word in dict.fromkeys(split_subwords(symbol.name)):
-        if forbidden := rules.forbidden_subwords.get(word):
-            violations.append(
-                f"{rel_path}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: Symbol '{symbol.name}' "
-                f"contains forbidden subword '{forbidden}' "
-                f"(Fix: replace '{forbidden}' with a domain noun)"
-            )
-        if replacement := rules.replacements.get(word):
-            raw_forbidden, canonical = replacement
-            violations.append(
-                f"{rel_path}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: Symbol '{symbol.name}' "
-                f"uses non-canonical '{raw_forbidden}' (Fix: use '{canonical}')"
-            )
-    return violations
+    return [
+        f"{rel_path}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: Symbol '{symbol.name}' {fix}"
+        for word in dict.fromkeys(split_subwords(symbol.name))
+        if (fix := subword_fixes.get(word))
+    ]
 
 
 def _check_schema_rules(symbol: Symbol, file_rules: Sequence[SymbolRule]) -> list[str]:
@@ -144,21 +126,23 @@ def _check_schema_rules(symbol: Symbol, file_rules: Sequence[SymbolRule]) -> lis
     ]
 
 
-def _check_file_symbols(rel_path: str, text: str, rules: _CompiledRules) -> list[str]:
+def _check_file_symbols(
+    rel_path: str, text: str, subword_fixes: dict[str, str], rules: Sequence[SymbolRule]
+) -> list[str]:
     file = Path(rel_path)
     if file.suffix != ".py":
         raise ValueError(f"symbol checker supports only .py files: '{rel_path}'")
-    file_rules = tuple(rule for rule in rules.rules if matches_any(rel_path, rule.files))
+    file_rules = tuple(rule for rule in rules if matches_any(rel_path, rule.files))
     violations: list[str] = []
     for symbol in _parse_python_symbols(text, file):
-        violations.extend(_check_single_symbol(symbol, rules))
+        violations.extend(_check_single_symbol(symbol, subword_fixes))
         violations.extend(_check_schema_rules(symbol, file_rules))
     return violations
 
 
 def check_symbol_text(rel_path: str, text: str, schema: SymbolSchema) -> list[str]:
     """Parse symbols from Python source text and check each against schema."""
-    return _check_file_symbols(rel_path, text, _compile_rules(schema))
+    return _check_file_symbols(rel_path, text, _compile_subwords(schema), schema.rules)
 
 
 def check_symbols(root: Path, schema: SymbolSchema) -> list[str]:
@@ -167,9 +151,11 @@ def check_symbols(root: Path, schema: SymbolSchema) -> list[str]:
     files = walk_files(base, ("**/*.py",))
     if not files:
         raise ValueError("no .py files found under repository root")
-    rules = _compile_rules(schema)
+    subword_fixes = _compile_subwords(schema)
     violations: list[str] = []
     for file_path in files:
         rel_path = file_path.relative_to(base).as_posix()
-        violations.extend(_check_file_symbols(rel_path, file_path.read_text("utf-8"), rules))
+        violations.extend(
+            _check_file_symbols(rel_path, file_path.read_text("utf-8"), subword_fixes, schema.rules)
+        )
     return violations

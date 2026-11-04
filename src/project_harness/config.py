@@ -14,10 +14,8 @@ from project_harness.model import (
     SYMBOL_VISIBILITIES,
     TEST_TYPE,
     ArchRule,
-    Replacement,
     SymbolRule,
     SymbolSchema,
-    Term,
     TraceConfig,
     TraceRule,
     Workflow,
@@ -30,7 +28,6 @@ ALLOWED_WORKFLOW_KEYS = frozenset(
     {"protected_paths", "checks", "source_paths", "test_command", "red_exit_codes"}
 )
 ALLOWED_ARCH_KEYS = frozenset({"files", "fix", "max_lines", "forbid"})
-ALLOWED_TERM_KEYS = frozenset({"term", "definition", "forbidden_terms"})
 ALLOWED_SYMBOL_KEYS = frozenset({"forbidden_subwords"})
 ALLOWED_SYMBOL_RULE_KEYS = frozenset({"files", "kinds", "visibility", "pattern", "fix"})
 ALLOWED_TRACE_KEYS = frozenset({"schema", "statuses", "locations", "rules"})
@@ -180,29 +177,6 @@ def load_arch(path: Path) -> tuple[ArchRule, ...]:
     return parse_arch(path.read_text(encoding="utf-8"))
 
 
-def _parse_term(raw_term: Any) -> Term:
-    table = _require_table(raw_term, "glossary.terms")
-    _check_keys(table, ALLOWED_TERM_KEYS, "glossary.terms")
-    term = _require_str(table, "term", "glossary.terms")
-    forbidden = _parse_str_tuple(table.get("forbidden_terms", []), "glossary.forbidden_terms")
-    return Term(term, _require_str(table, "definition", "glossary.terms"), forbidden)
-
-
-def parse_glossary(text: str) -> tuple[Term, ...]:
-    """Parse and validate the text of a .policy/glossary.toml file."""
-    raw = tomllib.loads(text)
-    _check_keys(raw, frozenset({"terms"}), "glossary.toml")
-    raw_terms = raw.get("terms", [])
-    if not isinstance(raw_terms, list):
-        raise ValueError("'glossary.terms' must be a list of tables")
-    return tuple(_parse_term(entry) for entry in raw_terms)
-
-
-def load_glossary(path: Path) -> tuple[Term, ...]:
-    """Load and validate a .policy/glossary.toml file."""
-    return parse_glossary(path.read_text(encoding="utf-8"))
-
-
 def _parse_symbol_rule(raw_rule: Any) -> SymbolRule:
     table = _require_table(raw_rule, "symbols.rules")
     _check_keys(table, ALLOWED_SYMBOL_RULE_KEYS, "symbols.rules")
@@ -225,13 +199,12 @@ def parse_symbols(text: str) -> SymbolSchema:
     settings = _require_table(raw.get("settings", {}), "symbols.settings")
     _check_keys(settings, ALLOWED_SYMBOL_KEYS, "symbols.settings")
     replacements_table = _require_table(raw.get("replacements", {}), "symbols.replacements")
-    replacements = tuple(
-        Replacement(
-            _parse_subword_tuple([canonical], "symbols.replacements")[0],
-            _parse_subword_tuple(forbidden, f"symbols.replacements.{canonical}"),
+    replacements = {
+        _parse_subword_tuple([canonical], "symbols.replacements")[0]: _parse_subword_tuple(
+            forbidden, f"symbols.replacements.{canonical}"
         )
         for canonical, forbidden in replacements_table.items()
-    )
+    }
     forbidden = _parse_subword_tuple(settings.get("forbidden_subwords", []), "forbidden_subwords")
     raw_rules = raw.get("rules", [])
     if not isinstance(raw_rules, list):

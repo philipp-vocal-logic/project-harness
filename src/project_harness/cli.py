@@ -12,18 +12,15 @@ from project_harness.config import (
     POLICY_DIR,
     git,
     load_arch,
-    load_glossary,
     load_symbols,
     load_traceability,
 )
 from project_harness.core import check_local, check_merge
-from project_harness.glossary import check_glossary
 from project_harness.symbol import check_symbols
 from project_harness.traceability import check_trace
 
 POLICY_FILES: dict[str, str] = {
     "arch": "arch.toml",
-    "glossary": "glossary.toml",
     "symbol": "symbols.toml",
     "trace": "traceability.toml",
 }
@@ -48,7 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     for subcommand, description in (
         ("arch", "Run architecture rules check (.policy/arch.toml)."),
-        ("glossary", "Run glossary terminology check (.policy/glossary.toml)."),
         ("symbol", "Run symbol naming check (.policy/symbols.toml)."),
         ("trace", "Run traceability graph check (.policy/traceability.toml)."),
     ):
@@ -66,8 +62,6 @@ def _dispatch(args: argparse.Namespace) -> list[str]:
     policy_path = root / POLICY_DIR / POLICY_FILES[args.command]
     if args.command == "arch":
         return check_arch(root, load_arch(policy_path))
-    if args.command == "glossary":
-        return check_glossary(root, load_glossary(policy_path))
     if args.command == "symbol":
         return check_symbols(root, load_symbols(policy_path))
     return check_trace(root, load_traceability(policy_path))
