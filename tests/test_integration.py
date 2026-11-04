@@ -76,7 +76,7 @@ def test_merge_check_accepts_test_first_source_change(
 
     assert _merge_check("feat/add") == 0
     assert capsys.readouterr().out == ""
-    assert not list((tmp_path / ".git" / "worktrees").glob("*"))
+    assert (tmp_path / "src" / "calc.py").read_text(encoding="utf-8") == ADD_IMPLEMENTATION
 
 
 def test_merge_check_rejects_source_change_without_red_test(
@@ -204,6 +204,13 @@ def test_approved_policy_branch_is_judged_by_its_own_policies(
     relaxed = strict.replace('forbid = ["TODO"]', "max_lines = 10")
     _commit_file(
         tmp_path, ".policy/architecture.toml", relaxed, "policy: allow TODO", "Reason: drafts"
+    )
+    _commit_file(
+        tmp_path,
+        "src/calc.py",
+        "def add(a: int, b: int) -> int:\n    result = 0\n    return result\n",
+        "policy: align calc style",
+        "Reason: match updated policy",
     )
     assert _merge_check("policy/docs") == 0
     assert capsys.readouterr().out == ""

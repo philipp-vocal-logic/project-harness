@@ -17,6 +17,12 @@ from project_harness.model import (
 )
 
 INTRINSIC_NAMES: frozenset[str] = frozenset({"", "_", "self", "cls"})
+CHILD_SCOPES: dict[type[ast.AST], str] = {
+    ast.ClassDef: "class",
+    ast.FunctionDef: "local",
+    ast.AsyncFunctionDef: "local",
+}
+FUNCTION_KINDS: dict[str, str] = {"module": "function", "class": "method"}
 DIRECT_BINDINGS: dict[type[ast.AST], tuple[str, str]] = {
     ast.ClassDef: ("name", "class"),
     ast.TypeVar: ("name", "symbol"),
@@ -39,11 +45,11 @@ def _is_intrinsic(name: str | None) -> bool:
     )
 
 
-def _binding(node: ast.AST, in_class: bool) -> tuple[str | None, str]:
+def _binding(node: ast.AST, scope: str) -> tuple[str | None, str]:
     if spec := DIRECT_BINDINGS.get(type(node)):
         return getattr(node, spec[0]), spec[1]
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        return node.name, ("method" if in_class else "function")
+        return node.name, FUNCTION_KINDS.get(scope, "symbol")
     if not isinstance(getattr(node, "ctx", None), ast.Store):
         return None, ""
     if isinstance(node, ast.Name):
@@ -56,17 +62,17 @@ def _binding(node: ast.AST, in_class: bool) -> tuple[str | None, str]:
 def _walk_ast(
     node: ast.AST,
     file: Path,
-    in_class: bool,
+    scope: str,
     symbols: list[Symbol],
     seen: set[tuple[str, str]],
 ) -> None:
-    name, kind = _binding(node, in_class)
+    name, kind = _binding(node, scope)
     if name is not None and not _is_intrinsic(name) and (name, kind) not in seen:
         seen.add((name, kind))
         symbols.append(Symbol(name, kind, file, node.lineno, node.col_offset + 1))
-    child_in_class = isinstance(node, ast.ClassDef)
+    child_scope = CHILD_SCOPES.get(type(node), scope)
     for child in ast.iter_child_nodes(node):
-        _walk_ast(child, file, child_in_class, symbols, seen)
+        _walk_ast(child, file, child_scope, symbols, seen)
 
 
 def _parse_python_symbols(text: str, file: Path) -> list[Symbol]:
@@ -77,7 +83,7 @@ def _parse_python_symbols(text: str, file: Path) -> list[Symbol]:
     if not _is_intrinsic(module_name):
         seen.add((module_name, "module"))
         symbols.append(Symbol(module_name, "module", file, 1, 1))
-    _walk_ast(tree, file, False, symbols, seen)
+    _walk_ast(tree, file, "module", symbols, seen)
     return symbols
 
 

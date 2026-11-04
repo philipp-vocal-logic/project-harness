@@ -47,7 +47,9 @@ def test_check_symbol_enforces_schema_rules_by_kind_visibility_and_files() -> No
         "def bad_public() -> None:\n"
         "    pass\n"
         "def load_ok() -> None:\n"
-        "    pass\n"
+        "    def local_step() -> None:\n"
+        "        pass\n"
+        "    local_step()\n"
         "def _BadPrivate() -> None:\n"
         "    pass\n"
         "def _good_private() -> None:\n"
@@ -63,7 +65,7 @@ def test_check_symbol_enforces_schema_rules_by_kind_visibility_and_files() -> No
         "(Fix: Use snake_case for methods.)",
         "src/BadModule.py:9:1 [ERR_SYMBOL]: function 'bad_public' violates '^load_[a-z0-9_]+$' "
         "(Fix: Prefix public functions with load_.)",
-        "src/BadModule.py:13:1 [ERR_SYMBOL]: function '_BadPrivate' violates '^_[a-z][a-z0-9_]*$' "
+        "src/BadModule.py:15:1 [ERR_SYMBOL]: function '_BadPrivate' violates '^_[a-z][a-z0-9_]*$' "
         "(Fix: Use _snake_case for private functions.)",
     ]
     assert check_symbol_text("tests/BadModule.py", code, symbols) == []

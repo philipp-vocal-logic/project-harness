@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
-import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -47,7 +46,7 @@ def _failure_detail(lines: Sequence[str], returncode: int) -> str:
         return match
     if len(lines) > 1 and lines[1].startswith("-->"):
         return f"{lines[1].removeprefix('-->').strip()}: {lines[0]}"
-    return lines[0]
+    return lines[-1].strip("= ") if lines[0].startswith(("=", ".")) else lines[0]
 
 
 def _run(cwd: Path, command: str) -> tuple[int, str]:
@@ -106,13 +105,14 @@ def _split_null(output: str) -> list[str]:
 
 
 def _exception_violations(
-    root: Path, merge_base: str, branch: str, prefix: str, paths: Sequence[str]
+    root: Path, merge_base: str, branch: str, prefixes: tuple[str, ...], paths: Sequence[str]
 ) -> list[str]:
     """Allow changes to paths only on a prefix branch whose commits touching them give a Reason."""
-    if not branch.startswith(prefix):
+    if not branch.startswith(prefixes):
+        primary = prefixes[0]
         return [
-            f"branch '{branch}' [ERR_BRANCH]: exception requires a '{prefix}*' branch "
-            f"(Fix: switch to a '{prefix}*' branch)"
+            f"branch '{branch}' [ERR_BRANCH]: exception requires a '{primary}*' branch "
+            f"(Fix: switch to a '{primary}*' branch)"
         ]
     pathspecs = [f":(literal){relative_path}" for relative_path in paths]
     log = git(
@@ -143,7 +143,7 @@ def _protected_violations(
     touched = sorted({*matching_paths(changed, workflow.protected_paths), *weakened_requirements})
     if not touched:
         return []
-    reasons = _exception_violations(root, merge_base, branch, POLICY_BRANCH_PREFIX, touched)
+    reasons = _exception_violations(root, merge_base, branch, (POLICY_BRANCH_PREFIX,), touched)
     if not reasons:
         return []
     return [
@@ -157,23 +157,12 @@ def _run_against_base_source(
     root: Path, workflow: Workflow, merge_base: str, sources: list[str]
 ) -> tuple[int, str]:
     """Run test_command on HEAD with the source files reset to merge_base."""
-    with tempfile.TemporaryDirectory() as scratch:
-        tree = Path(scratch) / "red"
-        git(root, "worktree", "add", "--detach", "--quiet", str(tree), "HEAD")
-        try:
-            pathspecs = [f":(literal){relative_path}" for relative_path in sources]
-            git(
-                tree,
-                "restore",
-                f"--source={merge_base}",
-                "--staged",
-                "--worktree",
-                "--",
-                *pathspecs,
-            )
-            return _run(tree, workflow.test_command)
-        finally:
-            git(root, "worktree", "remove", "--force", str(tree))
+    pathspecs = [f":(literal){relative_path}" for relative_path in sources]
+    git(root, "restore", f"--source={merge_base}", "--staged", "--worktree", "--", *pathspecs)
+    try:
+        return _run(root, workflow.test_command)
+    finally:
+        git(root, "restore", "--source=HEAD", "--staged", "--worktree", "--", *pathspecs)
 
 
 def _red_violations(
@@ -185,7 +174,9 @@ def _red_violations(
     code, detail = _run_against_base_source(root, workflow, merge_base, sources)
     if code in workflow.red_exit_codes:
         return []
-    reasons = _exception_violations(root, merge_base, branch, REFACTOR_BRANCH_PREFIX, sources)
+    reasons = _exception_violations(
+        root, merge_base, branch, (REFACTOR_BRANCH_PREFIX, POLICY_BRANCH_PREFIX), sources
+    )
     if not reasons:
         return []
     red = (

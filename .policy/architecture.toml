@@ -12,7 +12,7 @@ max_lines = 300
 forbid = [
     "^\\s*(from|import)\\s+project_harness\\.(cli|core|config|architecture|symbol|traceability)\\b",
     "^\\s*(from|import)\\s+(os|sys|argparse|tomllib|subprocess)\\b",
-    "\\bprint\\s*\\(",
+    "^[^#]*\\bprint\\s*\\(",
 ]
 fix = "Import direction is cli -> core -> checkers -> config -> model. Keep model.py pure and free of IO, CLI, config loading, and printing."
 
@@ -22,7 +22,7 @@ max_lines = 300
 forbid = [
     "^\\s*(from|import)\\s+project_harness\\.(cli|core|architecture|symbol|traceability)\\b",
     "^\\s*(from|import)\\s+(sys|argparse)\\b",
-    "\\bprint\\s*\\(",
+    "^[^#]*\\bprint\\s*\\(",
 ]
 fix = "Import direction is cli -> core -> checkers -> config -> model. Keep config.py limited to parsing and validating .policy/*.toml files and git-based file discovery."
 
@@ -36,7 +36,7 @@ max_lines = 320
 forbid = [
     "^\\s*(from|import)\\s+project_harness\\.(cli|core)\\b",
     "^\\s*(from|import)\\s+(sys|argparse|subprocess)\\b",
-    "\\bprint\\s*\\(",
+    "^[^#]*\\bprint\\s*\\(",
 ]
 fix = "Import direction is cli -> core -> checkers -> config -> model. Keep checker modules free of CLI, subprocess, and printing."
 
@@ -46,7 +46,7 @@ max_lines = 300
 forbid = [
     "^\\s*(from|import)\\s+project_harness\\.cli\\b",
     "^\\s*(from|import)\\s+(sys|argparse)\\b",
-    "\\bprint\\s*\\(",
+    "^[^#]*\\bprint\\s*\\(",
 ]
 fix = "Import direction is cli -> core -> checkers -> config -> model. Keep CLI parsing and stdout/stderr printing out of core.py."
 

@@ -66,6 +66,13 @@ def test_cli_returns_exit_2_on_missing_config(
             "src/a.py:3:8: F401 [*] `os` imported but unused",
             id="arrow_location_line",
         ),
+        pytest.param(
+            "...                                                                      [100%]\n"
+            "=== 3 passed in 0.01s ===\n",
+            "",
+            "3 passed in 0.01s",
+            id="pytest_summary_line",
+        ),
         pytest.param("Would reformat: src/a.py\n", "", "Would reformat: src/a.py", id="first_line"),
         pytest.param("", "", "exit code 1", id="empty_stdout_and_stderr_fallback_edge"),
     ],
