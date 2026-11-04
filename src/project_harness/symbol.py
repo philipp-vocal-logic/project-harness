@@ -108,18 +108,18 @@ def _matches_rule_target(symbol: Symbol, rule: SymbolRule) -> bool:
 
 
 def _check_single_symbol(symbol: Symbol, subword_fixes: dict[str, str]) -> list[str]:
-    rel_path = symbol.file.as_posix()
+    relative_path = symbol.file.as_posix()
     return [
-        f"{rel_path}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: Symbol '{symbol.name}' {fix}"
+        f"{relative_path}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: Symbol '{symbol.name}' {fix}"
         for word in dict.fromkeys(split_subwords(symbol.name))
         if (fix := subword_fixes.get(word))
     ]
 
 
 def _check_schema_rules(symbol: Symbol, file_rules: Sequence[SymbolRule]) -> list[str]:
-    rel_path = symbol.file.as_posix()
+    relative_path = symbol.file.as_posix()
     return [
-        f"{rel_path}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: {symbol.kind} "
+        f"{relative_path}:{symbol.line}:{symbol.column} [ERR_SYMBOL]: {symbol.kind} "
         f"'{symbol.name}' violates '{rule.pattern.pattern}' (Fix: {rule.fix})"
         for rule in file_rules
         if _matches_rule_target(symbol, rule) and not rule.pattern.fullmatch(symbol.name)
@@ -127,12 +127,12 @@ def _check_schema_rules(symbol: Symbol, file_rules: Sequence[SymbolRule]) -> lis
 
 
 def _check_file_symbols(
-    rel_path: str, text: str, subword_fixes: dict[str, str], rules: Sequence[SymbolRule]
+    relative_path: str, text: str, subword_fixes: dict[str, str], rules: Sequence[SymbolRule]
 ) -> list[str]:
-    file = Path(rel_path)
+    file = Path(relative_path)
     if file.suffix != ".py":
-        raise ValueError(f"symbol checker supports only .py files: '{rel_path}'")
-    file_rules = tuple(rule for rule in rules if matches_any(rel_path, rule.files))
+        raise ValueError(f"symbol checker supports only .py files: '{relative_path}'")
+    file_rules = tuple(rule for rule in rules if matches_any(relative_path, rule.files))
     violations: list[str] = []
     for symbol in _parse_python_symbols(text, file):
         violations.extend(_check_single_symbol(symbol, subword_fixes))
@@ -140,9 +140,9 @@ def _check_file_symbols(
     return violations
 
 
-def check_symbol_text(rel_path: str, text: str, schema: SymbolSchema) -> list[str]:
+def check_symbol_text(relative_path: str, text: str, schema: SymbolSchema) -> list[str]:
     """Parse symbols from Python source text and check each against schema."""
-    return _check_file_symbols(rel_path, text, _compile_subwords(schema), schema.rules)
+    return _check_file_symbols(relative_path, text, _compile_subwords(schema), schema.rules)
 
 
 def check_symbols(root: Path, schema: SymbolSchema) -> list[str]:
@@ -154,8 +154,10 @@ def check_symbols(root: Path, schema: SymbolSchema) -> list[str]:
     subword_fixes = _compile_subwords(schema)
     violations: list[str] = []
     for file_path in files:
-        rel_path = file_path.relative_to(base).as_posix()
+        relative_path = file_path.relative_to(base).as_posix()
         violations.extend(
-            _check_file_symbols(rel_path, file_path.read_text("utf-8"), subword_fixes, schema.rules)
+            _check_file_symbols(
+                relative_path, file_path.read_text("utf-8"), subword_fixes, schema.rules
+            )
         )
     return violations

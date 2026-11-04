@@ -1,6 +1,6 @@
 # project-harness (`harness`)
 
-Minimal, zero-noise CLI that enforces `.policy/` rules (`arch`, `symbol`, `traceability`, `workflow`) and Git TDD merge gates using only the Python standard library.
+Minimal, zero-noise CLI that enforces `.policy/` rules (`architecture`, `symbol`, `traceability`, `workflow`) and Git TDD merge gates using only the Python standard library.
 
 The stable base branch (`main`) is trusted; a branch is checked against it before merging, using the rules stored **on the base branch**, so a branch cannot loosen the rules that judge it.
 
@@ -16,9 +16,9 @@ harness check
 harness check --base origin/main --branch "$BRANCH"
 
 # Run individual built-in policy checkers
-harness arch
+harness architecture
 harness symbol
-harness trace
+harness traceability
 ```
 
 `--branch` defaults to the current branch; CI passes it because pull requests check out a detached merge commit.
@@ -63,7 +63,7 @@ test_command = "uv run pytest -q"
 red_exit_codes = [1, 2]
 ```
 
-Add `arch.toml`, `symbols.toml`, or `traceability.toml` only when you need them; missing files are skipped.
+Add `architecture.toml`, `symbols.toml`, or `traceability.toml` only when you need them; missing files are skipped.
 
 **2. Run the merge check in CI with a pinned harness version.** The pin lives in `.github/`, which is protected, so a branch cannot swap in a looser harness:
 
@@ -98,8 +98,8 @@ jobs:
 ## `.policy/` configuration
 
 - `.policy/workflow.toml`: `protected_paths`, `checks`, and the red check (`source_paths`, `test_command`, `red_exit_codes`).
-- `.policy/traceability.toml`: `harness trace` node chain (e.g. `Story -> Requirement`), statuses, TOML node locations, and coverage rules. A rule with `target_type = "Test"` requires the node's `tests` list to be non-empty.
-- `.policy/arch.toml`: `harness arch` rules; each rule sets `max_lines`, `forbid` line regexes, or both.
+- `.policy/traceability.toml`: `harness traceability` node chain (e.g. `Story -> Requirement`), statuses, TOML node locations, and coverage rules. A rule with `target_type = "Test"` requires the node's `tests` list to be non-empty.
+- `.policy/architecture.toml`: `harness architecture` rules; each rule sets `max_lines`, `forbid` line regexes, or both.
 - `.policy/symbols.toml`: `harness symbol` forbidden subwords, canonical replacements, and `[[rules]]` naming schema patterns by symbol kind and visibility in Python identifiers (`.py` files only).
 
 ### Traceability
@@ -115,7 +115,7 @@ links = ["US-1"]
 tests = ["tests/test_integration.py::test_merge_check_rejects_source_change_without_red_test"]
 ```
 
-A test link `<path>::<name>[::<name>...]` resolves when the file exists and contains every name as a whole word; otherwise `harness trace` reports `[ERR_DANGLING_TEST]`.
+A test link `<path>::<name>[::<name>...]` resolves when the file exists and contains every name as a whole word; otherwise `harness traceability` reports `[ERR_DANGLING_TEST]`.
 
 ## Agents and TDD
 

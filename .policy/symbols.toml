@@ -35,6 +35,18 @@ pattern = ["regex"]
 symbol = ["sym"]
 token = ["tok"]
 adjacency = ["adj"]
+architecture = ["arch"]
+traceability = ["trace"]
+relative = ["rel"]
+reference = ["ref"]
+directory = ["dir"]
+repository = ["repo"]
+string = ["str"]
+number = ["no", "num"]
+implementation = ["impl"]
+diagnostic = ["diag"]
+module = ["mod"]
+requirement = ["req"]
 
 [[rules]]
 files = ["src/**/*.py"]
@@ -50,7 +62,7 @@ fix = "Name test modules 'test_<subject>'."
 
 [[rules]]
 files = [
-    "src/project_harness/arch.py",
+    "src/project_harness/architecture.py",
     "src/project_harness/symbol.py",
     "src/project_harness/traceability.py",
 ]

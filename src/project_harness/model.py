@@ -38,8 +38,8 @@ class Workflow:
 
 
 @dataclass(frozen=True, slots=True)
-class ArchRule:
-    """A single .policy/arch.toml rule binding file globs to line limits and forbidden patterns."""
+class ArchitectureRule:
+    """A .policy/architecture.toml rule binding file globs to line limits and forbidden patterns."""
 
     files: tuple[str, ...]
     fix: str
@@ -91,7 +91,7 @@ class Node:
 
 
 @dataclass(frozen=True, slots=True)
-class TraceRule:
+class TraceabilityRule:
     """A declarative status and link coverage constraint in .policy/traceability.toml.
 
     A target_type of TEST_TYPE requires at least one entry in the node's tests list.
@@ -105,13 +105,13 @@ class TraceRule:
 
 
 @dataclass(frozen=True, slots=True)
-class TraceConfig:
+class TraceabilityConfig:
     """Parsed .policy/traceability.toml schema, statuses, locations, and rules."""
 
     chain: tuple[str, ...]
     statuses: dict[str, frozenset[str]]
     locations: dict[str, str]
-    rules: tuple[TraceRule, ...]
+    rules: tuple[TraceabilityRule, ...]
 
 
 def _match_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...]) -> bool:
@@ -130,19 +130,21 @@ def _match_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...]) ->
     )
 
 
-def matches_glob(rel_path: str, pattern: str) -> bool:
+def matches_glob(relative_path: str, pattern: str) -> bool:
     """Return True if a relative POSIX path matches a glob pattern supporting **."""
-    return _match_parts(PurePosixPath(rel_path).parts, PurePosixPath(pattern).parts)
+    return _match_parts(PurePosixPath(relative_path).parts, PurePosixPath(pattern).parts)
 
 
-def matches_any(rel_path: str, patterns: Sequence[str]) -> bool:
-    """Return True if rel_path matches at least one glob pattern."""
-    return any(matches_glob(rel_path, pattern) for pattern in patterns)
+def matches_any(relative_path: str, patterns: Sequence[str]) -> bool:
+    """Return True if relative_path matches at least one glob pattern."""
+    return any(matches_glob(relative_path, pattern) for pattern in patterns)
 
 
 def matching_paths(paths: Sequence[str], patterns: Sequence[str]) -> list[str]:
     """Return the sorted unique paths that match at least one glob pattern."""
-    return sorted({rel_path for rel_path in paths if matches_any(rel_path, patterns)})
+    return sorted(
+        {relative_path for relative_path in paths if matches_any(relative_path, patterns)}
+    )
 
 
 def split_subwords(text: str) -> tuple[str, ...]:

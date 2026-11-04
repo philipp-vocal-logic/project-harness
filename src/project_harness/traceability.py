@@ -13,8 +13,8 @@ from project_harness.model import (
     NODE_ID_PATTERN,
     TEST_TYPE,
     Node,
-    TraceConfig,
-    TraceRule,
+    TraceabilityConfig,
+    TraceabilityRule,
 )
 
 ALLOWED_NODE_KEYS = frozenset({"id", "type", "status", "title", "description", "links", "tests"})
@@ -26,17 +26,17 @@ def _validate_node_id(node_id: str, scope: str) -> str:
     return node_id
 
 
-def _parse_str_list(raw_list: Any, rel_path: str, key: str) -> tuple[str, ...]:
+def _parse_string_list(raw_list: Any, relative_path: str, key: str) -> tuple[str, ...]:
     if not isinstance(raw_list, list) or not all(isinstance(entry, str) for entry in raw_list):
-        raise ValueError(f"{rel_path}: '{key}' must be a list of strings")
+        raise ValueError(f"{relative_path}: '{key}' must be a list of strings")
     cleaned = tuple(entry.strip() for entry in raw_list)
     if any(not entry for entry in cleaned) or len(set(cleaned)) != len(cleaned):
-        raise ValueError(f"{rel_path}: empty or duplicate '{key}' entries in {raw_list}")
+        raise ValueError(f"{relative_path}: empty or duplicate '{key}' entries in {raw_list}")
     return cleaned
 
 
-def _is_test_ref(ref: str) -> bool:
-    file_part, separator, name_part = ref.partition("::")
+def _is_test_link(test_link: str) -> bool:
+    file_part, separator, name_part = test_link.partition("::")
     posix = PurePosixPath(file_part)
     return (
         bool(file_part and separator)
@@ -46,35 +46,37 @@ def _is_test_ref(ref: str) -> bool:
     )
 
 
-def _parse_test_refs(raw_tests: Any, rel_path: str) -> tuple[str, ...]:
-    refs = _parse_str_list(raw_tests, rel_path, "tests")
-    for ref in refs:
-        if not _is_test_ref(ref):
-            raise ValueError(f"{rel_path}: test '{ref}' must be '<relative path>::<test name>'")
-    return refs
+def _parse_test_links(raw_tests: Any, relative_path: str) -> tuple[str, ...]:
+    test_links = _parse_string_list(raw_tests, relative_path, "tests")
+    for test_link in test_links:
+        if not _is_test_link(test_link):
+            raise ValueError(
+                f"{relative_path}: test '{test_link}' must be '<relative path>::<test name>'"
+            )
+    return test_links
 
 
-def _load_toml_node(path: Path, expected_type: str, rel_path: str) -> Node:
+def _load_toml_node(path: Path, expected_type: str, relative_path: str) -> Node:
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     unknown = sorted(set(raw) - ALLOWED_NODE_KEYS)
     if unknown:
-        raise ValueError(f"{rel_path}: unknown keys {unknown}")
+        raise ValueError(f"{relative_path}: unknown keys {unknown}")
     raw_id = str(raw.get("id", path.stem)).strip()
     if raw_id != path.stem:
-        raise ValueError(f"{rel_path}: id '{raw_id}' does not match filename '{path.stem}'")
+        raise ValueError(f"{relative_path}: id '{raw_id}' does not match filename '{path.stem}'")
     node_type = str(raw.get("type", expected_type)).strip()
     if node_type != expected_type:
-        raise ValueError(f"{rel_path}: type '{node_type}' does not match '{expected_type}'")
+        raise ValueError(f"{relative_path}: type '{node_type}' does not match '{expected_type}'")
     status = str(raw.get("status", "")).strip()
     if not status:
-        raise ValueError(f"{rel_path}: missing 'status'")
+        raise ValueError(f"{relative_path}: missing 'status'")
     return Node(
-        _validate_node_id(raw_id, rel_path),
+        _validate_node_id(raw_id, relative_path),
         node_type,
         status,
-        _parse_str_list(raw.get("links", []), rel_path, "links"),
-        rel_path,
-        _parse_test_refs(raw.get("tests", []), rel_path),
+        _parse_string_list(raw.get("links", []), relative_path, "links"),
+        relative_path,
+        _parse_test_links(raw.get("tests", []), relative_path),
     )
 
 
@@ -83,12 +85,12 @@ def _discover_nodes(root: Path, locations: dict[str, str]) -> dict[str, Node]:
     discovered: dict[str, Node] = {}
     for node_type, pattern in locations.items():
         for file_path in walk_files(base, (pattern,)):
-            rel_path = file_path.relative_to(base).as_posix()
+            relative_path = file_path.relative_to(base).as_posix()
             if file_path.suffix != ".toml":
-                raise ValueError(f"{rel_path}: traceability nodes must be .toml files")
-            node = _load_toml_node(file_path, node_type, rel_path)
+                raise ValueError(f"{relative_path}: traceability nodes must be .toml files")
+            node = _load_toml_node(file_path, node_type, relative_path)
             if node.id in discovered:
-                raise ValueError(f"{rel_path}: duplicate node id '{node.id}'")
+                raise ValueError(f"{relative_path}: duplicate node id '{node.id}'")
             discovered[node.id] = node
     if not discovered:
         raise ValueError("no traceability nodes discovered for configured locations")
@@ -112,20 +114,20 @@ def _format_violation(node: Node, code: str, message: str, rule_id: str | None =
     return f"{prefix} [{code}]{suffix}: {message}"
 
 
-def _test_exists(root: Path, ref: str) -> bool:
-    rel_path, *names = ref.split("::")
-    file_path = root / rel_path
+def _test_exists(root: Path, test_link: str) -> bool:
+    relative_path, *names = test_link.split("::")
+    file_path = root / relative_path
     if not file_path.is_file():
         return False
     text = file_path.read_text(encoding="utf-8")
     return all(re.search(rf"\b{re.escape(name)}\b", text) for name in names)
 
 
-def _check_test_refs(root: Path, node: Node) -> list[str]:
+def _check_test_links(root: Path, node: Node) -> list[str]:
     return [
-        _format_violation(node, "ERR_DANGLING_TEST", f"test '{ref}' does not exist")
-        for ref in node.tests
-        if not _test_exists(root, ref)
+        _format_violation(node, "ERR_DANGLING_TEST", f"test '{test_link}' does not exist")
+        for test_link in node.tests
+        if not _test_exists(root, test_link)
     ]
 
 
@@ -155,7 +157,7 @@ def _check_node_links(node: Node, nodes: dict[str, Node], edges: set[frozenset[s
 
 
 def _check_rule_for_node(
-    node: Node, rule: TraceRule, neighbors: set[str], nodes: dict[str, Node]
+    node: Node, rule: TraceabilityRule, neighbors: set[str], nodes: dict[str, Node]
 ) -> list[str]:
     if node.status == DEPRECATED_STATUS or (node.type, node.status) != (
         rule.source_type,
@@ -190,7 +192,7 @@ def _check_rule_for_node(
     ]
 
 
-def check_trace(root: Path, config: TraceConfig) -> list[str]:
+def check_traceability(root: Path, config: TraceabilityConfig) -> list[str]:
     """Discover traceability nodes under root and validate links, test links, and rules."""
     base = root.resolve()
     nodes = _discover_nodes(base, config.locations)
@@ -211,7 +213,7 @@ def check_trace(root: Path, config: TraceConfig) -> list[str]:
             )
             continue
         violations.extend(_check_node_links(node, nodes, edges))
-        violations.extend(_check_test_refs(base, node))
+        violations.extend(_check_test_links(base, node))
         for rule in config.rules:
             violations.extend(_check_rule_for_node(node, rule, adjacency[node_id], nodes))
     return violations

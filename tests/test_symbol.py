@@ -53,20 +53,20 @@ def test_check_symbol_enforces_schema_rules_by_kind_visibility_and_files() -> No
         "def _good_private() -> None:\n"
         "    pass\n"
     )
-    violations = check_symbol_text("src/BadMod.py", code, symbols)
+    violations = check_symbol_text("src/BadModule.py", code, symbols)
     assert violations == [
-        "src/BadMod.py:1:1 [ERR_SYMBOL]: module 'BadMod' violates '^[a-z][a-z0-9_]*$' "
+        "src/BadModule.py:1:1 [ERR_SYMBOL]: module 'BadModule' violates '^[a-z][a-z0-9_]*$' "
         "(Fix: Use lower_snake_case.)",
-        "src/BadMod.py:3:1 [ERR_SYMBOL]: class 'bad_class' violates '^_?[A-Z][a-zA-Z0-9]*$' "
+        "src/BadModule.py:3:1 [ERR_SYMBOL]: class 'bad_class' violates '^_?[A-Z][a-zA-Z0-9]*$' "
         "(Fix: Use PascalCase.)",
-        "src/BadMod.py:7:5 [ERR_SYMBOL]: method 'BadMethod' violates '^[a-z][a-z0-9_]*$' "
+        "src/BadModule.py:7:5 [ERR_SYMBOL]: method 'BadMethod' violates '^[a-z][a-z0-9_]*$' "
         "(Fix: Use snake_case for methods.)",
-        "src/BadMod.py:9:1 [ERR_SYMBOL]: function 'bad_public' violates '^load_[a-z0-9_]+$' "
+        "src/BadModule.py:9:1 [ERR_SYMBOL]: function 'bad_public' violates '^load_[a-z0-9_]+$' "
         "(Fix: Prefix public functions with load_.)",
-        "src/BadMod.py:13:1 [ERR_SYMBOL]: function '_BadPrivate' violates '^_[a-z][a-z0-9_]*$' "
+        "src/BadModule.py:13:1 [ERR_SYMBOL]: function '_BadPrivate' violates '^_[a-z][a-z0-9_]*$' "
         "(Fix: Use _snake_case for private functions.)",
     ]
-    assert check_symbol_text("tests/BadMod.py", code, symbols) == []
+    assert check_symbol_text("tests/BadModule.py", code, symbols) == []
 
 
 @pytest.mark.parametrize(

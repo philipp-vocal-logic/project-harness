@@ -10,7 +10,7 @@ fix = "Use absolute project_harness imports and keep src free of test or tokeniz
 files = ["src/project_harness/model.py"]
 max_lines = 300
 forbid = [
-    "^\\s*(from|import)\\s+project_harness\\.(cli|core|config|arch|symbol|traceability)\\b",
+    "^\\s*(from|import)\\s+project_harness\\.(cli|core|config|architecture|symbol|traceability)\\b",
     "^\\s*(from|import)\\s+(os|sys|argparse|tomllib|subprocess)\\b",
     "\\bprint\\s*\\(",
 ]
@@ -20,7 +20,7 @@ fix = "Import direction is cli -> core -> checkers -> config -> model. Keep mode
 files = ["src/project_harness/config.py"]
 max_lines = 300
 forbid = [
-    "^\\s*(from|import)\\s+project_harness\\.(cli|core|arch|symbol|traceability)\\b",
+    "^\\s*(from|import)\\s+project_harness\\.(cli|core|architecture|symbol|traceability)\\b",
     "^\\s*(from|import)\\s+(sys|argparse)\\b",
     "\\bprint\\s*\\(",
 ]
@@ -28,7 +28,7 @@ fix = "Import direction is cli -> core -> checkers -> config -> model. Keep conf
 
 [[rules]]
 files = [
-    "src/project_harness/arch.py",
+    "src/project_harness/architecture.py",
     "src/project_harness/symbol.py",
     "src/project_harness/traceability.py",
 ]

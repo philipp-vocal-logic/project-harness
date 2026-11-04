@@ -10,8 +10,8 @@ import pytest
 
 from project_harness.cli import main
 
-PYTHON_BIN = sys.executable
-TEST_COMMAND = f"{PYTHON_BIN} -m pytest -q -p no:cacheprovider"
+PYTHON_EXECUTABLE = sys.executable
+TEST_COMMAND = f"{PYTHON_EXECUTABLE} -m pytest -q -p no:cacheprovider"
 
 WORKFLOW_TOML = f"""[workflow]
 protected_paths = [".policy/**", "ci/**"]
@@ -22,44 +22,44 @@ red_exit_codes = [1, 2]
 """
 
 ADD_TEST = "from src.calc import add\n\n\ndef test_add() -> None:\n    assert add(2, 3) == 5\n"
-ADD_IMPL = "def add(a: int, b: int) -> int:\n    return a + b\n"
+ADD_IMPLEMENTATION = "def add(a: int, b: int) -> int:\n    return a + b\n"
 
 
-def _git_run(repo: Path, *args: str) -> None:
-    """Execute a git command in repo, failing on non-zero exit."""
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+def _git_run(repository: Path, *args: str) -> None:
+    """Execute a git command in repository, failing on non-zero exit."""
+    subprocess.run(["git", "-C", str(repository), *args], check=True, capture_output=True)
 
 
-def _commit_file(repo: Path, rel_path: str, content: str, *message: str) -> None:
-    """Write rel_path and commit it with the given message paragraphs."""
-    target = repo / rel_path
+def _commit_file(repository: Path, relative_path: str, content: str, *message: str) -> None:
+    """Write relative_path and commit it with the given message paragraphs."""
+    target = repository / relative_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    _git_run(repo, "add", "-A")
-    _git_run(repo, "commit", *(part for paragraph in message for part in ("-m", paragraph)))
+    _git_run(repository, "add", "-A")
+    _git_run(repository, "commit", *(part for paragraph in message for part in ("-m", paragraph)))
 
 
 @pytest.fixture(autouse=True)
-def _run_in_tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _run_in_tmp_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Run harness from the temporary repository, like a user in their project."""
     monkeypatch.chdir(tmp_path)
 
 
-def _init_git_repo(repo: Path, branch: str) -> None:
+def _init_git_repository(repository: Path, branch: str) -> None:
     """Create a stable main with .policy/workflow.toml and switch to a new branch."""
-    _git_run(repo, "init", "-b", "main")
-    _git_run(repo, "config", "user.email", "test@example.com")
-    _git_run(repo, "config", "user.name", "Test User")
-    (repo / ".gitignore").write_text("__pycache__/\n*.py[cod]\n", encoding="utf-8")
-    (repo / ".policy").mkdir(exist_ok=True)
-    (repo / ".policy" / "workflow.toml").write_text(WORKFLOW_TOML, encoding="utf-8")
-    (repo / "src").mkdir()
-    (repo / "src" / "calc.py").write_text("def add(a: int, b: int) -> int:\n    return 0\n")
-    (repo / "tests").mkdir()
-    (repo / "tests" / "test_smoke.py").write_text("def test_smoke() -> None:\n    pass\n")
-    _git_run(repo, "add", "-A")
-    _git_run(repo, "commit", "-m", "chore: baseline")
-    _git_run(repo, "checkout", "-b", branch)
+    _git_run(repository, "init", "-b", "main")
+    _git_run(repository, "config", "user.email", "test@example.com")
+    _git_run(repository, "config", "user.name", "Test User")
+    (repository / ".gitignore").write_text("__pycache__/\n*.py[cod]\n", encoding="utf-8")
+    (repository / ".policy").mkdir(exist_ok=True)
+    (repository / ".policy" / "workflow.toml").write_text(WORKFLOW_TOML, encoding="utf-8")
+    (repository / "src").mkdir()
+    (repository / "src" / "calc.py").write_text("def add(a: int, b: int) -> int:\n    return 0\n")
+    (repository / "tests").mkdir()
+    (repository / "tests" / "test_smoke.py").write_text("def test_smoke() -> None:\n    pass\n")
+    _git_run(repository, "add", "-A")
+    _git_run(repository, "commit", "-m", "chore: baseline")
+    _git_run(repository, "checkout", "-b", branch)
 
 
 def _merge_check(branch: str) -> int:
@@ -70,9 +70,9 @@ def _merge_check(branch: str) -> int:
 def test_merge_check_accepts_test_first_source_change(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _init_git_repo(tmp_path, "feat/add")
+    _init_git_repository(tmp_path, "feat/add")
     _commit_file(tmp_path, "tests/test_calc.py", ADD_TEST, "test: add")
-    _commit_file(tmp_path, "src/calc.py", ADD_IMPL, "feat: add")
+    _commit_file(tmp_path, "src/calc.py", ADD_IMPLEMENTATION, "feat: add")
 
     assert _merge_check("feat/add") == 0
     assert capsys.readouterr().out == ""
@@ -82,8 +82,8 @@ def test_merge_check_accepts_test_first_source_change(
 def test_merge_check_rejects_source_change_without_red_test(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _init_git_repo(tmp_path, "feat/add")
-    _commit_file(tmp_path, "src/calc.py", ADD_IMPL, "feat: add without test")
+    _init_git_repository(tmp_path, "feat/add")
+    _commit_file(tmp_path, "src/calc.py", ADD_IMPLEMENTATION, "feat: add without test")
 
     assert _merge_check("feat/add") == 1
     out = capsys.readouterr().out
@@ -94,7 +94,7 @@ def test_merge_check_rejects_source_change_without_red_test(
 def test_refactor_branch_needs_reason_in_source_commits(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _init_git_repo(tmp_path, "refactor/calc")
+    _init_git_repository(tmp_path, "refactor/calc")
     body = "def add(a: int, b: int) -> int:\n    result = 0\n    return result\n"
     _commit_file(tmp_path, "src/calc.py", body, "refactor: name result")
 
@@ -109,7 +109,7 @@ def test_refactor_branch_needs_reason_in_source_commits(
 def test_merge_check_rejects_protected_change_using_base_rules(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _init_git_repo(tmp_path, "fix/ci")
+    _init_git_repository(tmp_path, "fix/ci")
     # The branch drops all protection, but the rules are read from main.
     loosened = WORKFLOW_TOML.replace('[".policy/**", "ci/**"]', "[]")
     _commit_file(tmp_path, ".policy/workflow.toml", loosened, "fix: loosen")
@@ -126,7 +126,7 @@ def test_merge_check_rejects_protected_change_using_base_rules(
 def test_policy_branch_needs_reason_in_every_protected_commit(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _init_git_repo(tmp_path, "policy/ci")
+    _init_git_repository(tmp_path, "policy/ci")
     _commit_file(tmp_path, "ci/run.sh", "true\n", "chore: add ci", "Reason: run checks in CI")
     _commit_file(tmp_path, "ci/run.sh", "true\ntrue\n", "chore: tweak ci")
     sha = subprocess.run(
@@ -151,7 +151,7 @@ def test_policy_branch_needs_reason_in_every_protected_commit(
 def test_merge_check_sees_renamed_and_non_ascii_protected_paths(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _init_git_repo(tmp_path, "fix/move")
+    _init_git_repository(tmp_path, "fix/move")
     _git_run(tmp_path, "mv", ".policy/workflow.toml", "workflow.toml")
     _git_run(tmp_path, "commit", "-m", "fix: move")
     _commit_file(tmp_path, "ci/ä.sh", "true\n", "fix: unicode")
@@ -165,7 +165,7 @@ def test_merge_check_sees_renamed_and_non_ascii_protected_paths(
 def test_merge_check_rejects_dirty_tree_and_reports_config_errors(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _init_git_repo(tmp_path, "fix/x")
+    _init_git_repository(tmp_path, "fix/x")
     (tmp_path / "README.md").write_text("dirty\n", encoding="utf-8")
     assert _merge_check("fix/x") == 1
     assert capsys.readouterr().out == "working-tree [ERR_DIRTY]: uncommitted changes present\n"
@@ -178,7 +178,7 @@ def test_merge_check_rejects_dirty_tree_and_reports_config_errors(
 def test_merge_check_runs_base_checks_after_rules_pass(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _init_git_repo(tmp_path, "docs/readme")
+    _init_git_repository(tmp_path, "docs/readme")
     _commit_file(tmp_path, "tests/test_fail.py", "def test_fail() -> None:\n    assert 0\n", "docs")
 
     assert _merge_check("docs/readme") == 1
@@ -191,14 +191,16 @@ def test_approved_policy_branch_is_judged_by_its_own_policies(
 ) -> None:
     strict = '[[rules]]\nfiles = ["docs/*.md"]\nforbid = ["TODO"]\nfix = "Finish docs."\n'
     (tmp_path / ".policy").mkdir()
-    (tmp_path / ".policy" / "arch.toml").write_text(strict, encoding="utf-8")
-    _init_git_repo(tmp_path, "policy/docs")
+    (tmp_path / ".policy" / "architecture.toml").write_text(strict, encoding="utf-8")
+    _init_git_repository(tmp_path, "policy/docs")
     _commit_file(tmp_path, "docs/plan.md", "TODO\n", "docs: plan")
     assert _merge_check("policy/docs") == 1
-    assert "docs/plan.md:1:1 [ERR_ARCH]" in capsys.readouterr().out
+    assert "docs/plan.md:1:1 [ERR_ARCHITECTURE]" in capsys.readouterr().out
 
     relaxed = strict.replace('forbid = ["TODO"]', "max_lines = 10")
-    _commit_file(tmp_path, ".policy/arch.toml", relaxed, "policy: allow TODO", "Reason: drafts")
+    _commit_file(
+        tmp_path, ".policy/architecture.toml", relaxed, "policy: allow TODO", "Reason: drafts"
+    )
     assert _merge_check("policy/docs") == 0
     assert capsys.readouterr().out == ""
 
@@ -206,7 +208,7 @@ def test_approved_policy_branch_is_judged_by_its_own_policies(
 def test_check_runs_from_subdirectory_and_rejects_config_option(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _init_git_repo(tmp_path, "feat/x")
+    _init_git_repository(tmp_path, "feat/x")
     monkeypatch.chdir(tmp_path / "src")
     assert main(["check"]) == 0
     with pytest.raises(SystemExit):
@@ -214,7 +216,7 @@ def test_check_runs_from_subdirectory_and_rejects_config_option(
 
 
 def test_policies_skip_git_ignored_files(tmp_path: Path) -> None:
-    _init_git_repo(tmp_path, "feat/x")
+    _init_git_repository(tmp_path, "feat/x")
     (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")
     (tmp_path / "build").mkdir()
     (tmp_path / "build" / "gen.py").write_text("temp_value = 1\n", encoding="utf-8")

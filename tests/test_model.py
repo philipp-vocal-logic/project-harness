@@ -15,7 +15,7 @@ from project_harness.model import (
 
 
 @pytest.mark.parametrize(
-    ("rel_path", "pattern", "expected"),
+    ("relative_path", "pattern", "expected"),
     [
         ("src/app.py", "src/**/*.py", True),
         ("src/pkg/sub/app.py", "src/**/*.py", True),
@@ -26,9 +26,9 @@ from project_harness.model import (
         ("README.md", "README.md", True),
     ],
 )
-def test_matches_glob_and_matches_any(rel_path: str, pattern: str, expected: bool) -> None:
-    assert matches_glob(rel_path, pattern) is expected
-    assert matches_any(rel_path, [pattern]) is expected
+def test_matches_glob_and_matches_any(relative_path: str, pattern: str, expected: bool) -> None:
+    assert matches_glob(relative_path, pattern) is expected
+    assert matches_any(relative_path, [pattern]) is expected
 
 
 def test_matching_paths_returns_sorted_unique_matches() -> None:

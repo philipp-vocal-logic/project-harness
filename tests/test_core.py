@@ -12,24 +12,26 @@ from project_harness.cli import main
 from project_harness.core import run_commands
 
 
-def _git_init(repo: Path) -> None:
-    """Make repo a git work tree so harness can list its files."""
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+def _git_init(repository: Path) -> None:
+    """Make repository a git work tree so harness can list its files."""
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
 
 
 def test_run_commands_passes_dot_policy_args_without_copying_to_root(tmp_path: Path) -> None:
-    policy_dir = tmp_path / ".policy"
-    policy_dir.mkdir()
-    (policy_dir / "arch.toml").write_text("# arch\n", encoding="utf-8")
+    policy_directory = tmp_path / ".policy"
+    policy_directory.mkdir()
+    (policy_directory / "architecture.toml").write_text("# architecture\n", encoding="utf-8")
     script = tmp_path / "verify_args.py"
     script.write_text(
         "import sys\n"
         "from pathlib import Path\n"
-        "assert sys.argv[1:] == ['--config', '.policy/arch.toml']\n"
-        "assert not Path('arch.toml').exists()\n",
+        "assert sys.argv[1:] == ['--config', '.policy/architecture.toml']\n"
+        "assert not Path('architecture.toml').exists()\n",
         encoding="utf-8",
     )
-    command = f"{Path(sys.executable).as_posix()} {script.as_posix()} --config .policy/arch.toml"
+    command = (
+        f"{Path(sys.executable).as_posix()} {script.as_posix()} --config .policy/architecture.toml"
+    )
     assert run_commands(tmp_path, [command]) == []
 
 
@@ -65,7 +67,7 @@ def test_cli_returns_exit_2_on_missing_config(
 def test_run_commands_parses_failure_details(
     tmp_path: Path, stdout_text: str, stderr_text: str, expected_detail: str
 ) -> None:
-    script = tmp_path / "emit_diag.py"
+    script = tmp_path / "emit_diagnostic.py"
     script.write_text(
         "import sys\n"
         f"sys.stdout.write({stdout_text!r})\n"
