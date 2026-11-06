@@ -1,5 +1,9 @@
 id = "REQ-ARCHITECTURE"
 title = "Enforce file line limits and forbidden line patterns from .policy/architecture.toml"
+acceptance = [
+    "Validate [[rules]] tables in .policy/architecture.toml requiring files globs, a fix string, and max_lines or forbid regexes.",
+    "Report [ERR_ARCHITECTURE] with file:line:1 and the rule fix message when a matched file exceeds max_lines or matches a forbid regex.",
+]
 tests = [
     "tests/test_architecture.py::test_check_architecture_detects_line_limit_and_forbid_violations",
     "tests/test_architecture.py::test_parse_architecture_rejects_rule_without_max_lines_or_forbid",

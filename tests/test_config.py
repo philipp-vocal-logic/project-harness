@@ -35,6 +35,7 @@ def test_parse_workflow_reads_all_keys() -> None:
         ('[workflow]\nsource_paths = ["src/**"]\n', "test_command is required"),
         ("[workflow]\ntest_command = 1\n", "must be a string"),
         ("[workflow]\nred_exit_codes = [0]\n", "list of exit codes in 1..255"),
+        ("[workflow]\nred_exit_codes = [true]\n", "list of exit codes in 1..255"),
         ("[workflow\n", "Expected"),
     ],
 )

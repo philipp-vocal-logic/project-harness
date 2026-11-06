@@ -1,5 +1,10 @@
 id = "REQ-RED"
 title = "Require source changes to come with tests that fail against the base source"
+acceptance = [
+    "Restore merge-base versions of changed workflow.source_paths in-place, run workflow.test_command, and always restore HEAD afterward.",
+    "Report [ERR_RED] when workflow.test_command does not exit in workflow.red_exit_codes against merge-base source.",
+    "Exempt refactor/* and policy/* branches when every commit touching workflow.source_paths contains a 'Reason: <why>' line.",
+]
 tests = [
     "tests/test_integration.py::test_merge_check_accepts_test_first_source_change",
     "tests/test_integration.py::test_merge_check_rejects_source_change_without_red_test",

@@ -13,13 +13,25 @@ def test_check_symbol_detects_forbidden_subwords_and_replacements() -> None:
         '[settings]\nforbidden_subwords = ["temp"]\n[replacements]\nload = ["fetch"]\n'
     )
     code = (
-        "def fetch_temps[temp_type](x: dict[str, int]) -> int:\n"
-        "    match x:\n"
-        "        case {**temp_rest}:\n"
-        "            return 1\n"
+        "import os as temp_os\n"
+        "class Box:\n"
+        "    def set_items(self, other: Box) -> None:\n"
+        "        self.temp_attr = 1\n"
+        "        other.temp_ignored = 2\n"
+        "def fetch_temps[temp_type, **temp_spec, *temp_tuple](x: dict[str, int]) -> int:\n"
+        "    try:\n"
+        "        match x:\n"
+        "            case [*temp_star]:\n"
+        "                return 0\n"
+        "            case {**temp_rest}:\n"
+        "                return 1\n"
+        "            case temp_as:\n"
+        "                return 2\n"
+        "    except Exception as temp_error:\n"
+        "        return 3\n"
     )
     violations = check_symbol_text("src/app.py", code, symbols)
-    assert len(violations) == 4 and all("[ERR_SYMBOL]" in violation for violation in violations)
+    assert len(violations) == 11 and all("[ERR_SYMBOL]" in violation for violation in violations)
 
 
 def test_check_symbol_enforces_schema_rules_by_kind_visibility_and_files() -> None:
@@ -69,6 +81,14 @@ def test_check_symbol_enforces_schema_rules_by_kind_visibility_and_files() -> No
         "(Fix: Use _snake_case for private functions.)",
     ]
     assert check_symbol_text("tests/BadModule.py", code, symbols) == []
+    pkg_symbols = parse_symbols(
+        '[[rules]]\nfiles = ["src/**/__init__.py"]\nkinds = ["module"]\n'
+        'pattern = "^[a-z][a-z0-9_]*$"\nfix = "Use lower_snake_case."\n'
+    )
+    assert check_symbol_text("src/BadPkg/__init__.py", "", pkg_symbols) == [
+        "src/BadPkg/__init__.py:1:1 [ERR_SYMBOL]: module 'BadPkg' violates '^[a-z][a-z0-9_]*$' "
+        "(Fix: Use lower_snake_case.)"
+    ]
 
 
 @pytest.mark.parametrize(

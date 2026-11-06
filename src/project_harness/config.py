@@ -31,7 +31,7 @@ ALLOWED_ARCHITECTURE_KEYS = frozenset({"files", "fix", "max_lines", "forbid"})
 ALLOWED_SYMBOL_KEYS = frozenset({"forbidden_subwords"})
 ALLOWED_SYMBOL_RULE_KEYS = frozenset({"files", "kinds", "visibility", "pattern", "fix"})
 ALLOWED_TRACEABILITY_KEYS = frozenset({"requirements", "tests"})
-ALLOWED_REQUIREMENT_KEYS = frozenset({"id", "title", "description", "tests"})
+ALLOWED_REQUIREMENT_KEYS = frozenset({"id", "title", "acceptance", "tests"})
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -172,11 +172,6 @@ def parse_architecture(text: str) -> tuple[ArchitectureRule, ...]:
     return tuple(_parse_architecture_rule(entry) for entry in rules)
 
 
-def load_architecture(path: Path) -> tuple[ArchitectureRule, ...]:
-    """Load and validate a .policy/architecture.toml file."""
-    return parse_architecture(path.read_text(encoding="utf-8"))
-
-
 def _parse_symbol_rule(raw_rule: Any) -> SymbolRule:
     table = _require_table(raw_rule, "symbols.rules")
     _check_keys(table, ALLOWED_SYMBOL_RULE_KEYS, "symbols.rules")
@@ -212,11 +207,6 @@ def parse_symbols(text: str) -> SymbolSchema:
     return SymbolSchema(forbidden, replacements, tuple(map(_parse_symbol_rule, raw_rules)))
 
 
-def load_symbols(path: Path) -> SymbolSchema:
-    """Load and validate a .policy/symbols.toml file."""
-    return parse_symbols(path.read_text(encoding="utf-8"))
-
-
 def _is_test_link(test_link: str) -> bool:
     file_part, separator, name_part = test_link.partition("::")
     posix = PurePosixPath(file_part)
@@ -247,17 +237,24 @@ def _parse_requirement_id(table: dict[str, Any], relative_path: str) -> str:
     return requirement_id
 
 
+def _parse_acceptance(raw_acceptance: Any, relative_path: str) -> tuple[str, ...]:
+    criteria = _parse_string_tuple(raw_acceptance, f"{relative_path}.acceptance")
+    if not criteria or len(set(criteria)) != len(criteria) or any("\n" in e for e in criteria):
+        raise ValueError(
+            f"{relative_path}: 'acceptance' must be a non-empty list of unique single-line strings"
+        )
+    return criteria
+
+
 def parse_requirement(text: str, relative_path: str) -> Requirement:
     """Parse and validate a requirement TOML document."""
     raw = tomllib.loads(text)
     _check_keys(raw, ALLOWED_REQUIREMENT_KEYS, relative_path)
     requirement_id = _parse_requirement_id(raw, relative_path)
     title = _require_string(raw, "title", relative_path)
-    description = raw.get("description", "")
-    if not isinstance(description, str):
-        raise ValueError(f"{relative_path}: 'description' must be a string")
+    acceptance = _parse_acceptance(raw.get("acceptance"), relative_path)
     tests = _parse_test_links(raw.get("tests", []), relative_path)
-    return Requirement(requirement_id, title, tests, relative_path, description.strip())
+    return Requirement(requirement_id, title, acceptance, tests, relative_path)
 
 
 def parse_traceability(text: str) -> TraceabilityConfig:
@@ -273,8 +270,3 @@ def parse_traceability(text: str) -> TraceabilityConfig:
     if not requirements or not tests:
         raise ValueError("traceability.requirements and traceability.tests must not be empty")
     return TraceabilityConfig(requirements, tests)
-
-
-def load_traceability(path: Path) -> TraceabilityConfig:
-    """Load and validate a .policy/traceability.toml file."""
-    return parse_traceability(path.read_text(encoding="utf-8"))

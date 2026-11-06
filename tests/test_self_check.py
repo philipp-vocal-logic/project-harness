@@ -8,10 +8,10 @@ import pytest
 
 from project_harness.architecture import check_architecture
 from project_harness.config import (
-    load_architecture,
-    load_symbols,
-    load_traceability,
     load_workflow,
+    parse_architecture,
+    parse_symbols,
+    parse_traceability,
 )
 from project_harness.symbol import check_symbols
 from project_harness.traceability import check_traceability
@@ -27,16 +27,19 @@ def _run_in_repository_root(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_project_adheres_to_own_symbols() -> None:
-    assert check_symbols(REPOSITORY_ROOT, load_symbols(POLICY_DIRECTORY / "symbols.toml")) == []
+    symbols = parse_symbols((POLICY_DIRECTORY / "symbols.toml").read_text(encoding="utf-8"))
+    assert check_symbols(REPOSITORY_ROOT, symbols) == []
 
 
 def test_project_adheres_to_own_architecture() -> None:
-    rules = load_architecture(POLICY_DIRECTORY / "architecture.toml")
+    rules = parse_architecture((POLICY_DIRECTORY / "architecture.toml").read_text(encoding="utf-8"))
     assert check_architecture(REPOSITORY_ROOT, rules) == []
 
 
 def test_project_adheres_to_own_traceability() -> None:
-    config = load_traceability(POLICY_DIRECTORY / "traceability.toml")
+    config = parse_traceability(
+        (POLICY_DIRECTORY / "traceability.toml").read_text(encoding="utf-8")
+    )
     assert check_traceability(REPOSITORY_ROOT, config) == []
 
 

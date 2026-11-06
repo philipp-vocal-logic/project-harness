@@ -56,5 +56,7 @@ def test_has_reason(message: str, expected: bool) -> None:
 
 def test_split_subwords_and_subword_forms_handle_camel_case_acronyms_and_plurals() -> None:
     assert split_subwords("HTTPResponses_and_URLs") == ("http", "responses", "and", "urls")
+    assert split_subwords("v2_ÜberGröße") == ("v", "2", "über", "größe")
     assert subword_forms("policy") == frozenset({"policy", "policys", "policies"})
     assert subword_forms("branch") == frozenset({"branch", "branchs", "branches"})
+    assert subword_forms("key") == frozenset({"key", "keys"})

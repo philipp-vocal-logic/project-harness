@@ -24,7 +24,7 @@ Reads `.policy/*.toml` from the base ref, diffs `merge-base..HEAD` (`-z --no-ren
 
 | Rule | Passes when | Exception |
 |---|---|---|
-| Protected paths & requirements | no file matching `protected_paths` changed, and no base requirement was deleted, renamed, or had test links removed | `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
+| Protected paths & requirements | no file matching `protected_paths` changed, and no base requirement was deleted, renamed, or had `title`, `acceptance`, or test links weakened | `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
 | Red check | if `source_paths` changed: `test_command` on the branch tests with the base source exits in `red_exit_codes` | `refactor/*` or `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
 | Built-in policies & checks | all `.policy/*.toml` checkers and `workflow.checks` exit 0 on HEAD | — |
 
@@ -116,7 +116,7 @@ jobs:
   pattern = "^(parse|load|check)_[a-z0-9_]+$"
   fix = "Prefix public functions with 'parse_', 'load_', or 'check_'."
   ```
-- `.policy/traceability.toml`: `requirements` and `tests` glob lists for bidirectional requirement-to-test AST checking:
+- `.policy/traceability.toml`: `requirements` and `tests` glob lists for bidirectional requirement-to-test checking:
   ```toml
   [traceability]
   requirements = ["trace/*.toml"]
@@ -125,16 +125,20 @@ jobs:
 
 ### Traceability
 
-Requirements are flat TOML files under `trace/`. Every requirement must link to at least one existing Python AST test (`def test_*` or `class Test*: def test_*`), and every test in `tests/` must be linked by at least one requirement:
+Requirements are flat TOML files under `trace/` with an `id`, `title`, single-line `acceptance` criteria, and `tests`. Every requirement must link to at least one existing test (`.py` AST `def test_*` / `class Test*: def test_*`, or `.c` Unity `void test_*(void)` definitions), and every test in `tests/` must be linked by at least one requirement:
 
 ```toml
 # trace/REQ-RED.toml
 id = "REQ-RED"
 title = "Require source changes to come with tests that fail against the base source"
+acceptance = [
+    "Require workflow.test_command to exit in workflow.red_exit_codes against merge-base source when workflow.source_paths change.",
+    "Exempt refactor/* and policy/* branches when every commit touching workflow.source_paths contains a 'Reason: <why>' line.",
+]
 tests = ["tests/test_integration.py::test_merge_check_rejects_source_change_without_red_test"]
 ```
 
-On `feat/*`, `fix/*`, and `refactor/*` branches, agents and developers can add new requirements and add or rename test links. Deleting a requirement, editing its `title`, or reducing its linked tests requires a `policy/*` branch with a `Reason: <why>` line.
+On `feat/*`, `fix/*`, and `refactor/*` branches, agents and developers can add new requirements, add `acceptance` criteria, and add or rename test links. Deleting a requirement, editing its `title`, removing or editing base `acceptance` criteria, or reducing its linked tests requires a `policy/*` branch with a `Reason: <why>` line.
 
 ## Agents and TDD
 

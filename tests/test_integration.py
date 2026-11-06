@@ -71,12 +71,16 @@ def test_merge_check_accepts_test_first_source_change(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _init_git_repository(tmp_path, "feat/add")
-    _commit_file(tmp_path, "tests/test_calc.py", ADD_TEST, "test: add")
+    _commit_file(
+        tmp_path, "tests/test_calc.py", f"import src.extra\n{ADD_TEST}", "test: add and extra"
+    )
+    _commit_file(tmp_path, "src/extra.py", "EXTRA = 1\n", "feat: extra module")
     _commit_file(tmp_path, "src/calc.py", ADD_IMPLEMENTATION, "feat: add")
 
     assert _merge_check("feat/add") == 0
     assert capsys.readouterr().out == ""
     assert (tmp_path / "src" / "calc.py").read_text(encoding="utf-8") == ADD_IMPLEMENTATION
+    assert (tmp_path / "src" / "extra.py").read_text(encoding="utf-8") == "EXTRA = 1\n"
 
 
 def test_merge_check_rejects_source_change_without_red_test(
@@ -89,6 +93,7 @@ def test_merge_check_rejects_source_change_without_red_test(
     out = capsys.readouterr().out
     assert "[ERR_RED]: expected exit in [1, 2] against base source, got exit 0" in out
     assert "branch 'feat/add' [ERR_BRANCH]: exception requires a 'refactor/*' branch" in out
+    assert (tmp_path / "src" / "calc.py").read_text(encoding="utf-8") == ADD_IMPLEMENTATION
 
 
 def test_refactor_branch_needs_reason_in_source_commits(
@@ -223,7 +228,8 @@ def test_merge_check_allows_additive_requirements_and_protects_weakening(
     (tmp_path / ".policy" / "traceability.toml").write_text("[traceability]\n", encoding="utf-8")
     (tmp_path / "trace").mkdir()
     (tmp_path / "trace" / "REQ-1.toml").write_text(
-        'id = "REQ-1"\ntitle = "Smoke"\ntests = ["tests/test_smoke.py::test_smoke"]\n',
+        'id = "REQ-1"\ntitle = "Smoke"\nacceptance = ["Pass smoke."]\n'
+        'tests = ["tests/test_smoke.py::test_smoke"]\n',
         encoding="utf-8",
     )
     _init_git_repository(tmp_path, "feat/add")
@@ -232,7 +238,7 @@ def test_merge_check_allows_additive_requirements_and_protects_weakening(
     _commit_file(
         tmp_path,
         "trace/REQ-1.toml",
-        'id = "REQ-1"\ntitle = "Smoke"\n'
+        'id = "REQ-1"\ntitle = "Smoke"\nacceptance = ["Pass smoke.", "Add ints."]\n'
         'tests = ["tests/test_smoke.py::test_smoke", "tests/test_calc.py::test_add"]\n',
         "trace: link test_add",
     )
@@ -242,7 +248,7 @@ def test_merge_check_allows_additive_requirements_and_protects_weakening(
     _commit_file(
         tmp_path,
         "trace/REQ-1.toml",
-        'id = "REQ-1"\ntitle = "Changed"\n'
+        'id = "REQ-1"\ntitle = "Changed"\nacceptance = ["Pass smoke.", "Add ints."]\n'
         'tests = ["tests/test_smoke.py::test_smoke", "tests/test_calc.py::test_add"]\n',
         "trace: weaken title",
     )

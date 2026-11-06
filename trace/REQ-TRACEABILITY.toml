@@ -1,5 +1,11 @@
 id = "REQ-TRACEABILITY"
-title = "Enforce bidirectional traceability between requirement TOML files and Python AST test definitions"
+title = "Enforce bidirectional traceability between requirement TOML files and discovered test definitions"
+acceptance = [
+    "Validate requirement TOML files requiring id matching filename stem, title, non-empty unique single-line acceptance strings, and unique test links.",
+    "Report [ERR_MISSING_TEST] when a requirement links no tests and [ERR_DANGLING_TEST] when a linked test does not exist.",
+    "Report [ERR_UNTRACED_TEST] when a discovered test is not linked by any requirement.",
+    "Detect weakened base requirements when a requirement is deleted, moved, retitled, loses acceptance criteria, or reduces its test count.",
+]
 tests = [
     "tests/test_self_check.py::test_project_adheres_to_own_traceability",
     "tests/test_traceability.py::test_check_requirement_changes_detects_weakened_requirements",

@@ -1,5 +1,10 @@
 id = "REQ-SYMBOL"
 title = "Enforce Python AST symbol naming schemas, forbidden subwords, and canonical replacements from .policy/symbols.toml"
+acceptance = [
+    "Split Python AST identifiers into lowercase subwords and expand regular English plural forms for forbidden_subwords and replacements.",
+    "Report [ERR_SYMBOL] with file:line:col when any module, class, function, method, or local/attribute binding uses a forbidden or non-canonical subword.",
+    "Enforce [[rules]] regex patterns by file glob, symbol kind (module, class, function, method), and visibility (all, public, private).",
+]
 tests = [
     "tests/test_model.py::test_split_subwords_and_subword_forms_handle_camel_case_acronyms_and_plurals",
     "tests/test_self_check.py::test_project_adheres_to_own_symbols",

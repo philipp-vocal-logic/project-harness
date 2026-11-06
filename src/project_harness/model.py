@@ -82,9 +82,9 @@ class Requirement:
 
     id: str
     title: str
+    acceptance: tuple[str, ...] = ()
     tests: tuple[str, ...] = ()
     location: str = ""
-    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)

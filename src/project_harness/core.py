@@ -36,7 +36,9 @@ BUILTIN_POLICY_FILES: tuple[str, ...] = (
     "traceability.toml",
 )
 WORKFLOW_FILE = f"{POLICY_DIRECTORY}/workflow.toml"
-FAILURE_LINE_PATTERN = re.compile(r"^(?:FAILED|ERROR)\b")
+FAILURE_LINE_PATTERN = re.compile(
+    r"^(?:FAILED|ERROR)\b|:\s*(?:fatal )?error:|:FAIL\b|\bAssertion .*failed"
+)
 
 
 def _failure_detail(lines: Sequence[str], returncode: int) -> str:
@@ -115,19 +117,11 @@ def _exception_violations(
             f"(Fix: switch to a '{primary}*' branch)"
         ]
     pathspecs = [f":(literal){relative_path}" for relative_path in paths]
-    log = git(
-        root, "log", "-z", "--no-merges", "--format=%h%n%B", f"{merge_base}..HEAD", "--", *pathspecs
-    )
-    commits = [entry.partition("\n") for entry in _split_null(log)]
-    if not commits:
-        return [
-            f"branch '{branch}' [ERR_REASON]: no commit records these changes "
-            "(Fix: commit changes with a 'Reason: <why>' line)"
-        ]
+    log = git(root, "log", "-z", "--format=%h%n%B", f"{merge_base}..HEAD", "--", *pathspecs)
     return [
         f"{sha} [ERR_REASON]: missing 'Reason: <why>' line "
         f"(Fix: add a 'Reason: <why>' line to commit {sha})"
-        for sha, _, message in commits
+        for sha, _, message in (entry.partition("\n") for entry in _split_null(log))
         if not has_reason(message)
     ]
 

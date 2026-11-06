@@ -1,13 +1,21 @@
-"""Bidirectional traceability checker linking requirement TOML files to Python AST tests."""
+"""Bidirectional traceability checker linking requirement TOML files to discovered tests."""
 
 from __future__ import annotations
 
 import ast
-from collections.abc import Mapping, Sequence
+import re
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from project_harness.config import parse_requirement, walk_files
 from project_harness.model import Requirement, TraceabilityConfig
+
+C_COMMENT_OR_LITERAL_PATTERN = re.compile(
+    r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*'
+)
+C_TEST_PATTERN = re.compile(
+    r"\b(?:static\s+)?(?:void|int)\s+(test_[A-Za-z0-9_]*)\s*\(\s*(?:void)?\s*\)\s*\{"
+)
 
 
 def _discover_requirements(root: Path, patterns: Sequence[str]) -> dict[str, Requirement]:
@@ -53,14 +61,34 @@ def _parse_file_tests(relative_path: str, text: str) -> dict[str, str]:
     return discovered
 
 
+def _blank_match(match: re.Match[str]) -> str:
+    return "\n" * match.group(0).count("\n")
+
+
+def _parse_c_tests(relative_path: str, text: str) -> dict[str, str]:
+    blanked = C_COMMENT_OR_LITERAL_PATTERN.sub(_blank_match, text)
+    return {
+        f"{relative_path}::{match.group(1)}": (
+            f"{relative_path}:{blanked.count('\n', 0, match.start()) + 1}:1"
+        )
+        for match in C_TEST_PATTERN.finditer(blanked)
+    }
+
+
+TEST_PARSERS: dict[str, Callable[[str, str], dict[str, str]]] = {
+    ".c": _parse_c_tests,
+    ".py": _parse_file_tests,
+}
+
+
 def _discover_tests(root: Path, patterns: Sequence[str]) -> dict[str, str]:
     base = root.resolve()
     discovered: dict[str, str] = {}
     for file_path in walk_files(base, patterns):
         relative_path = file_path.relative_to(base).as_posix()
-        if file_path.suffix != ".py":
-            raise ValueError(f"{relative_path}: test files must be .py files")
-        discovered.update(_parse_file_tests(relative_path, file_path.read_text(encoding="utf-8")))
+        if (parser := TEST_PARSERS.get(file_path.suffix)) is None:
+            raise ValueError(f"{relative_path}: unsupported test file type '{file_path.suffix}'")
+        discovered.update(parser(relative_path, file_path.read_text(encoding="utf-8")))
     return discovered
 
 
@@ -97,6 +125,7 @@ def _is_requirement_weakened(
         head_requirement is None
         or head_requirement.location != base_requirement.location
         or head_requirement.title != base_requirement.title
+        or not set(base_requirement.acceptance) <= set(head_requirement.acceptance)
         or len(head_requirement.tests) < len(base_requirement.tests)
     )
 
@@ -117,7 +146,7 @@ def check_requirement_changes(
 
 
 def check_traceability(root: Path, config: TraceabilityConfig) -> list[str]:
-    """Discover requirements and Python tests under root and verify bidirectional links."""
+    """Discover requirements and tests under root and verify bidirectional links."""
     base = root.resolve()
     requirements = _discover_requirements(base, config.requirements)
     discovered_tests = _discover_tests(base, config.tests)

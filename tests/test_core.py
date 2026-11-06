@@ -67,6 +67,33 @@ def test_cli_returns_exit_2_on_missing_config(
             id="arrow_location_line",
         ),
         pytest.param(
+            "cc -std=c89 -Iinclude src/calc.c tests/test_calc.c\n"
+            "src/calc.c:12:5: error: ISO C90 forbids mixed declarations and code\n",
+            "",
+            "src/calc.c:12:5: error: ISO C90 forbids mixed declarations and code",
+            id="compiler_error_line",
+        ),
+        pytest.param(
+            "",
+            "src/calc.c:1:10: fatal error: calc.h: No such file or directory\n",
+            "src/calc.c:1:10: fatal error: calc.h: No such file or directory",
+            id="compiler_fatal_error_line",
+        ),
+        pytest.param(
+            "tests/test_calc.c:10:test_add:PASS\n"
+            "tests/test_calc.c:14:test_multiply:FAIL: Expected 12 Was 0\n"
+            "2 Tests 1 Failures 0 Ignored\nFAIL\n",
+            "",
+            "tests/test_calc.c:14:test_multiply:FAIL: Expected 12 Was 0",
+            id="unity_fail_line",
+        ),
+        pytest.param(
+            "",
+            "test_calc: tests/test_calc.c:8: main: Assertion `add(2, 3) == 5' failed.\n",
+            "test_calc: tests/test_calc.c:8: main: Assertion `add(2, 3) == 5' failed.",
+            id="c_assertion_failed_line",
+        ),
+        pytest.param(
             "...                                                                      [100%]\n"
             "=== 3 passed in 0.01s ===\n",
             "",
