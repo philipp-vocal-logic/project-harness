@@ -6,6 +6,7 @@ import re
 import shlex
 import subprocess
 from collections.abc import Mapping, Sequence
+from os import environ
 from pathlib import Path
 
 from project_harness.architecture import check_architecture
@@ -54,7 +55,10 @@ def _failure_detail(lines: Sequence[str], returncode: int) -> str:
 def _run(cwd: Path, command: str) -> tuple[int, str]:
     """Run command in cwd; return its exit code and the most relevant output line."""
     args = shlex.split(command)
-    completed = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
+    environment = {key: environ[key] for key in environ.keys() - {"VIRTUAL_ENV"}}
+    completed = subprocess.run(
+        args, cwd=cwd, env=environment, capture_output=True, text=True, check=False
+    )
     raw_lines = f"{completed.stdout}\n{completed.stderr}".splitlines()
     lines = [line.strip() for line in raw_lines if line.strip()]
     return completed.returncode, _failure_detail(lines, completed.returncode)
@@ -207,7 +211,7 @@ def _load_reference_requirements(
 
 
 def _weakened_requirements(
-    root: Path, merge_base: str, base_policies: Mapping[str, str], changed: Sequence[str]
+    root: Path, base_reference: str, base_policies: Mapping[str, str], changed: Sequence[str]
 ) -> list[str]:
     if (
         "traceability.toml" not in base_policies
@@ -215,7 +219,7 @@ def _weakened_requirements(
     ):
         return []
     patterns = parse_traceability(base_policies["traceability.toml"]).requirements
-    base_requirements = _load_reference_requirements(root, merge_base, patterns)
+    base_requirements = _load_reference_requirements(root, base_reference, patterns)
     head_requirements = _load_reference_requirements(root, "HEAD", patterns)
     return check_requirement_changes(base_requirements, head_requirements)
 
@@ -238,7 +242,7 @@ def check_merge(root: Path, base_reference: str, branch: str | None) -> list[str
     changed = _split_null(
         git(root, "diff", "-z", "--name-only", "--no-renames", merge_base, "HEAD")
     )
-    weakened = _weakened_requirements(root, merge_base, base_policies, changed)
+    weakened = _weakened_requirements(root, base_reference, base_policies, changed)
     violations = _protected_violations(root, workflow, merge_base, branch_name, changed, weakened)
     violations += _red_violations(root, workflow, merge_base, branch_name, changed)
     if violations:

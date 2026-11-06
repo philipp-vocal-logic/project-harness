@@ -35,6 +35,19 @@ def test_run_commands_passes_dot_policy_args_without_copying_to_root(tmp_path: P
     assert run_commands(tmp_path, [command]) == []
 
 
+def test_run_commands_strips_virtual_env_for_worktree_isolation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VIRTUAL_ENV", "/outer/worktree/.venv")
+    script = tmp_path / "verify_env.py"
+    script.write_text(
+        "import os\nassert 'VIRTUAL_ENV' not in os.environ\n",
+        encoding="utf-8",
+    )
+    command = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
+    assert run_commands(tmp_path, [command]) == []
+
+
 def test_cli_returns_exit_2_on_missing_config(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

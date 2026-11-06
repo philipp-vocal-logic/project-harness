@@ -4,6 +4,7 @@ acceptance = [
     "Validate .policy/workflow.toml keys and types, returning exit code 2 with [ERR_CONFIG] on invalid configuration or git errors.",
     "Discover tracked and non-ignored files from the git work-tree root regardless of the current working subdirectory.",
     "Run built-in .policy/*.toml checkers and workflow.checks commands, returning exit code 0 when clean and exit code 1 with [ERR_CHECK] on failure.",
+    "Strip inherited VIRTUAL_ENV when executing check and test commands so linked git worktrees stay isolated.",
 ]
 tests = [
     "tests/test_config.py::test_load_workflow_reads_file",
@@ -12,6 +13,7 @@ tests = [
     "tests/test_core.py::test_cli_returns_exit_2_on_missing_config",
     "tests/test_core.py::test_run_commands_parses_failure_details",
     "tests/test_core.py::test_run_commands_passes_dot_policy_args_without_copying_to_root",
+    "tests/test_core.py::test_run_commands_strips_virtual_env_for_worktree_isolation",
     "tests/test_integration.py::test_check_runs_from_subdirectory_and_rejects_config_option",
     "tests/test_integration.py::test_merge_check_runs_base_checks_after_rules_pass",
     "tests/test_integration.py::test_policies_skip_git_ignored_files",

@@ -23,6 +23,14 @@ red_exit_codes = [1, 2]
 
 ADD_TEST = "from src.calc import add\n\n\ndef test_add() -> None:\n    assert add(2, 3) == 5\n"
 ADD_IMPLEMENTATION = "def add(a: int, b: int) -> int:\n    return a + b\n"
+SMOKE_REQUIREMENT = (
+    'id = "REQ-1"\ntitle = "Smoke"\nacceptance = ["Pass smoke."]\n'
+    'tests = ["tests/test_smoke.py::test_smoke"]\n'
+)
+EXPANDED_REQUIREMENT = (
+    'id = "REQ-1"\ntitle = "Smoke"\nacceptance = ["Pass smoke.", "Add ints."]\n'
+    'tests = ["tests/test_smoke.py::test_smoke", "tests/test_calc.py::test_add"]\n'
+)
 
 
 def _git_run(repository: Path, *args: str) -> None:
@@ -227,33 +235,40 @@ def test_merge_check_allows_additive_requirements_and_protects_weakening(
     (tmp_path / ".policy").mkdir()
     (tmp_path / ".policy" / "traceability.toml").write_text("[traceability]\n", encoding="utf-8")
     (tmp_path / "trace").mkdir()
-    (tmp_path / "trace" / "REQ-1.toml").write_text(
-        'id = "REQ-1"\ntitle = "Smoke"\nacceptance = ["Pass smoke."]\n'
-        'tests = ["tests/test_smoke.py::test_smoke"]\n',
-        encoding="utf-8",
-    )
+    (tmp_path / "trace" / "REQ-1.toml").write_text(SMOKE_REQUIREMENT, encoding="utf-8")
     _init_git_repository(tmp_path, "feat/add")
     _commit_file(tmp_path, "tests/test_calc.py", ADD_TEST, "test: add")
     _commit_file(tmp_path, "src/calc.py", ADD_IMPLEMENTATION, "feat: add")
-    _commit_file(
-        tmp_path,
-        "trace/REQ-1.toml",
-        'id = "REQ-1"\ntitle = "Smoke"\nacceptance = ["Pass smoke.", "Add ints."]\n'
-        'tests = ["tests/test_smoke.py::test_smoke", "tests/test_calc.py::test_add"]\n',
-        "trace: link test_add",
-    )
+    _commit_file(tmp_path, "trace/REQ-1.toml", EXPANDED_REQUIREMENT, "trace: link test_add")
     assert _merge_check("feat/add") == 0
     assert capsys.readouterr().out == ""
 
-    _commit_file(
-        tmp_path,
-        "trace/REQ-1.toml",
-        'id = "REQ-1"\ntitle = "Changed"\nacceptance = ["Pass smoke.", "Add ints."]\n'
-        'tests = ["tests/test_smoke.py::test_smoke", "tests/test_calc.py::test_add"]\n',
-        "trace: weaken title",
-    )
+    weakened = EXPANDED_REQUIREMENT.replace('"Smoke"', '"Changed"')
+    _commit_file(tmp_path, "trace/REQ-1.toml", weakened, "trace: weaken title")
     assert _merge_check("feat/add") == 1
     assert "trace/REQ-1.toml [ERR_PROTECTED]" in capsys.readouterr().out
+
+
+def test_parallel_worktrees_require_rebase_onto_updated_base(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".policy").mkdir()
+    (tmp_path / ".policy" / "traceability.toml").write_text("[traceability]\n", encoding="utf-8")
+    _init_git_repository(tmp_path, "feat/a")
+    worktree_b = tmp_path.with_name(f"{tmp_path.name}_b")
+    _git_run(tmp_path, "worktree", "add", "-b", "feat/b", str(worktree_b), "main")
+    _commit_file(tmp_path, "trace/REQ-A.toml", SMOKE_REQUIREMENT.replace("1", "A"), "trace: A")
+    assert _merge_check("feat/a") == 0
+    _git_run(tmp_path, "checkout", "main")
+    _git_run(tmp_path, "merge", "--ff-only", "feat/a")
+    monkeypatch.chdir(worktree_b)
+    _commit_file(worktree_b, "tests/test_calc.py", ADD_TEST, "test: add")
+    _commit_file(worktree_b, "src/calc.py", ADD_IMPLEMENTATION, "feat: add")
+    _commit_file(worktree_b, "trace/REQ-B.toml", EXPANDED_REQUIREMENT.replace("1", "B"), "trace: B")
+    assert _merge_check("feat/b") == 1
+    assert "trace/REQ-A.toml [ERR_PROTECTED]" in capsys.readouterr().out
+    _git_run(worktree_b, "rebase", "main")
+    assert _merge_check("feat/b") == 0
 
 
 def test_check_runs_from_subdirectory_and_rejects_config_option(

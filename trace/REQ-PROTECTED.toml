@@ -5,6 +5,7 @@ acceptance = [
     "Read .policy/*.toml from the base ref and diff merge-base..HEAD with -z --no-renames so renames and non-ASCII paths are inspected.",
     "Reject changes to workflow.protected_paths or weakened base requirements with [ERR_PROTECTED] unless on a policy/* branch where every touching commit has a 'Reason: <why>' line.",
     "Evaluate a policy/* branch against its own .policy/ rules once its protected .policy/ changes and Reason lines pass.",
+    "Compare requirements against base_reference so parallel worktrees must rebase onto new base requirements before passing check_merge.",
 ]
 tests = [
     "tests/test_integration.py::test_approved_policy_branch_is_judged_by_its_own_policies",
@@ -12,6 +13,7 @@ tests = [
     "tests/test_integration.py::test_merge_check_rejects_dirty_tree_and_reports_config_errors",
     "tests/test_integration.py::test_merge_check_rejects_protected_change_using_base_rules",
     "tests/test_integration.py::test_merge_check_sees_renamed_and_non_ascii_protected_paths",
+    "tests/test_integration.py::test_parallel_worktrees_require_rebase_onto_updated_base",
     "tests/test_integration.py::test_policy_branch_needs_reason_in_every_protected_commit",
     "tests/test_model.py::test_has_reason",
     "tests/test_model.py::test_matches_glob_and_matches_any",

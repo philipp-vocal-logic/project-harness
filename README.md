@@ -144,6 +144,8 @@ On `feat/*`, `fix/*`, and `refactor/*` branches, agents and developers can add n
 
 Tell agents to write a failing test first and to make it pass without editing tests. The red check is the backstop: source changes only merge with tests that fail against the base source.
 
+For parallel development of orthogonal requirements, run one `git worktree` per requirement (`git worktree add -b feat/req-a ../wt-req-a main`), seed its `trace/REQ-*.toml` on the branch, and rebase each subsequent worktree onto `main` (`git rebase main && harness check --base main`) before fast-forward merging.
+
 ## Development
 
 ```bash
