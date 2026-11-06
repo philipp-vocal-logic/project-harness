@@ -196,6 +196,7 @@ def test_merge_check_runs_base_checks_after_rules_pass(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _init_git_repository(tmp_path, "docs/readme")
+    _commit_file(tmp_path, "src/calc.py", ADD_IMPLEMENTATION, "feat: untestable while head fails")
     _commit_file(tmp_path, "tests/test_fail.py", "def test_fail() -> None:\n    assert 0\n", "docs")
 
     assert _merge_check("docs/readme") == 1

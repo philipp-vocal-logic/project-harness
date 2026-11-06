@@ -56,9 +56,12 @@ def _run(cwd: Path, command: str) -> tuple[int, str]:
     """Run command in cwd and return its exit code with the most relevant output line."""
     args = shlex.split(command)
     environment = {key: environ[key] for key in environ.keys() - {"VIRTUAL_ENV"}}
-    completed = subprocess.run(
-        args, cwd=cwd, env=environment, capture_output=True, text=True, check=False
-    )
+    try:
+        completed = subprocess.run(
+            args, cwd=cwd, env=environment, capture_output=True, text=True, check=False
+        )
+    except OSError as error:
+        return 127, str(error)
     raw_lines = f"{completed.stdout}\n{completed.stderr}".splitlines()
     lines = [line.strip() for line in raw_lines if line.strip()]
     return completed.returncode, _failure_detail(lines, completed.returncode)
@@ -224,6 +227,21 @@ def _weakened_requirements(
     return check_requirement_changes(base_requirements, head_requirements)
 
 
+def _head_violations(
+    root: Path,
+    base_reference: str,
+    base_policies: Mapping[str, str],
+    workflow: Workflow,
+    changed: Sequence[str],
+) -> list[str]:
+    approved = matching_paths(changed, workflow.protected_paths)
+    has_policy_change = any(path.startswith(f"{POLICY_DIRECTORY}/") for path in approved)
+    policies = _load_policies(root, "HEAD") if has_policy_change else base_policies
+    policy_reference = "HEAD" if has_policy_change else base_reference
+    checks = parse_workflow(git(root, "show", f"{policy_reference}:{WORKFLOW_FILE}")).checks
+    return check_builtin_policies(root, policies) + run_commands(root, checks)
+
+
 def check_merge(root: Path, base_reference: str, branch: str | None) -> list[str]:
     """Check HEAD against base_reference using the workflow and policy rules on base_reference.
 
@@ -243,13 +261,10 @@ def check_merge(root: Path, base_reference: str, branch: str | None) -> list[str
         git(root, "diff", "-z", "--name-only", "--no-renames", merge_base, "HEAD")
     )
     weakened = _weakened_requirements(root, base_reference, base_policies, changed)
-    violations = _protected_violations(root, workflow, merge_base, branch_name, changed, weakened)
-    violations += _red_violations(root, workflow, merge_base, branch_name, changed)
-    if violations:
+    if violations := _protected_violations(
+        root, workflow, merge_base, branch_name, changed, weakened
+    ):
         return violations
-    approved = matching_paths(changed, workflow.protected_paths)
-    has_policy_change = any(path.startswith(f"{POLICY_DIRECTORY}/") for path in approved)
-    policies = _load_policies(root, "HEAD") if has_policy_change else base_policies
-    policy_reference = "HEAD" if has_policy_change else base_reference
-    checks = parse_workflow(git(root, "show", f"{policy_reference}:{WORKFLOW_FILE}")).checks
-    return check_builtin_policies(root, policies) + run_commands(root, checks)
+    if violations := _head_violations(root, base_reference, base_policies, workflow, changed):
+        return violations
+    return _red_violations(root, workflow, merge_base, branch_name, changed)

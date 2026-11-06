@@ -25,8 +25,8 @@ harness check --base origin/main --branch "$BRANCH"
 | Rule | Passes when | Exception |
 |---|---|---|
 | Protected paths & requirements | no file matching `protected_paths` changed, and no base requirement was deleted, renamed, or had `title`, `acceptance`, or test links weakened | `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
-| Red check | when `source_paths` change, `test_command` runs the branch tests against the base source and exits in `red_exit_codes` | `refactor/*` or `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
 | Built-in checks & `workflow.checks` | all built-in `.policy/*.toml` checks and `workflow.checks` commands exit 0 on HEAD | — |
+| Red check | when `source_paths` change, `test_command` runs the branch tests against the base source and exits in `red_exit_codes` | `refactor/*` or `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
 
 Protected paths, the red check, and all built-in and workflow checks evaluate against the base `.policy/` by default. `harness` switches to the branch's own `.policy/` for built-in and workflow checks only when an approved `policy/*` branch modifies `.policy/`, so policy format changes can merge.
 

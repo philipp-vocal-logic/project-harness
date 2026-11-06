@@ -131,3 +131,5 @@ def test_run_commands_parses_failure_details(
     command = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
     violations = run_commands(tmp_path, [command])
     assert violations == [f"{command} [ERR_CHECK]: {expected_detail}"]
+    missing = run_commands(tmp_path, ["./missing_binary"])
+    assert len(missing) == 1 and missing[0].startswith("./missing_binary [ERR_CHECK]:")
