@@ -16,12 +16,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="harness",
         description="Enforce .policy rules of the current git work tree and check branches "
-        "against a stable base.",
+        "against the base branch.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     check_parser = subparsers.add_parser("check", help="Run policy checks or the merge check.")
     check_parser.add_argument(
-        "--base", help="Base git ref; check HEAD against it using the base policy rules."
+        "--base", help="Base branch ref used to check HEAD against the base .policy/ rules."
     )
     check_parser.add_argument(
         "--branch", help="Branch name for policy/* and refactor/* exceptions (default: current)."

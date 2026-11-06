@@ -26,7 +26,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked
-      - name: Merge check against the stable base (rules read from the base branch)
+      - name: Merge check against the base branch
         if: github.event_name == 'pull_request'
         env:
           HEAD_REF: ${{ github.head_ref }}

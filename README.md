@@ -1,36 +1,36 @@
 # project-harness (`harness`)
 
-Minimal, zero-noise CLI that enforces `.policy/` rules (`architecture`, `symbol`, `traceability`, `workflow`) and Git TDD merge gates using only the Python standard library.
+Minimal, zero-noise Python stdlib CLI that enforces Git TDD merge gates and `.policy/` rules (`architecture`, `symbol`, `traceability`, `workflow`).
 
-The stable base branch (`main`) is trusted; a branch is checked against it before merging, using the rules stored **on the base branch**, so a branch cannot loosen the rules that judge it.
+`harness` checks each branch before merging against the `.policy/` rules stored **on the base branch**, so a branch cannot weaken the rules that judge it.
 
 ## Usage
 
-Run `harness` anywhere inside a git work tree. It always reads `<work-tree root>/.policy/*.toml` and checks the files git knows about: tracked files plus untracked files not excluded by `.gitignore`.
+Run `harness` anywhere inside a git work tree. It reads `<work-tree root>/.policy/*.toml` and checks all tracked files plus untracked files not excluded by `.gitignore`.
 
 ```bash
 # Run all built-in .policy/*.toml checks in-process and workflow.toml commands
 harness check
 
-# Merge check of HEAD against the stable base (CI runs this on pull requests)
+# Merge check of HEAD against the base branch (CI runs this on pull requests)
 harness check --base origin/main --branch "$BRANCH"
 ```
 
-`--branch` defaults to the current branch; CI passes it because pull requests check out a detached merge commit.
+`--branch` defaults to the current branch. CI passes `--branch` explicitly because pull requests check out a detached merge commit.
 
 ### Merge check (`--base`)
 
-Reads `.policy/*.toml` from the base ref, diffs `merge-base..HEAD` (`-z --no-renames`, so renames and non-ASCII paths are seen), then:
+`harness` requires a clean working tree, reads `.policy/*.toml` from the base branch, and diffs `merge-base..HEAD` with `-z --no-renames` so renames and non-ASCII paths remain visible:
 
 | Rule | Passes when | Exception |
 |---|---|---|
 | Protected paths & requirements | no file matching `protected_paths` changed, and no base requirement was deleted, renamed, or had `title`, `acceptance`, or test links weakened | `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
-| Red check | if `source_paths` changed: `test_command` on the branch tests with the base source exits in `red_exit_codes` | `refactor/*` or `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
-| Built-in policies & checks | all `.policy/*.toml` checkers and `workflow.checks` exit 0 on HEAD | — |
+| Red check | when `source_paths` change, `test_command` runs the branch tests against the base source and exits in `red_exit_codes` | `refactor/*` or `policy/*` branch **and** every commit touching those paths has a `Reason: <why>` line |
+| Built-in checks & `workflow.checks` | all built-in `.policy/*.toml` checks and `workflow.checks` commands exit 0 on HEAD | — |
 
-Protected paths and the red check always use the base rules. Built-in policies and checks use the base `.policy/` too, unless the branch's approved protected changes include `.policy/` files: then the branch is judged by its own `.policy/`, so policy format changes can merge.
+Protected paths, the red check, and all built-in and workflow checks evaluate against the base `.policy/` by default. `harness` switches to the branch's own `.policy/` for built-in and workflow checks only when an approved `policy/*` branch modifies `.policy/`, so policy format changes can merge.
 
-The working tree must be clean. Every exception is traceable in git history:
+Every exception remains traceable in git history:
 
 ```bash
 git log --grep '^Reason:' -- .policy/ .github/   # why protected paths changed
@@ -45,9 +45,9 @@ git log --format='%h %an %s' -- .policy/ .github/ .githooks/ pyproject.toml
 
 ## Adopting harness in a project
 
-harness is installed as a tool; the project only holds `.policy/` (and optionally `trace/`).
+Install `harness` as an external tool so the project only holds `.policy/` (and optionally `trace/`).
 
-**1. Add `.policy/workflow.toml`.** `checks` and `test_command` are plain commands, so the merge gate works for any language:
+**1. Add `.policy/workflow.toml`.** `checks` and `test_command` run plain shell commands, so the merge gate works for any language:
 
 ```toml
 [workflow]
@@ -58,9 +58,9 @@ test_command = "uv run pytest -q"
 red_exit_codes = [1, 2]
 ```
 
-Add `architecture.toml`, `symbols.toml`, or `traceability.toml` only when you need them; missing files are skipped.
+Add `architecture.toml`, `symbols.toml`, or `traceability.toml` only when you need them because `harness` skips missing policy files.
 
-**2. Run the merge check in CI with a pinned harness version.** The pin lives in `.github/`, which is protected, so a branch cannot swap in a looser harness:
+**2. Run the merge check in CI with a pinned harness version.** Protecting `.github/` locks this pin so a branch cannot swap in a looser harness:
 
 ```yaml
 # .github/workflows/harness.yml
@@ -77,18 +77,18 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v10.3.3
-      - name: Merge check against the stable base
+      - name: Merge check against the base branch
         env:
           HEAD_REF: ${{ github.head_ref }}
           HARNESS: git+https://github.com/philipp-vocal-logic/project-harness@<tag-or-commit>
         run: uvx --from "$HARNESS" harness check --base "origin/$GITHUB_BASE_REF" --branch "$HEAD_REF"
 ```
 
-**3. Configure the repository.** GitHub runs `pull_request` workflows from the branch under review, so a branch could edit or drop the job above. These settings are required for the gate to hold:
+**3. Configure the repository.** GitHub runs `pull_request` workflows from the branch under review, so a branch could edit or drop the job above. Enforce these repository settings so the gate holds:
 
-- Require the merge check through a ruleset ("Require workflows to pass before merging") that points at a workflow on a protected ref, or at least require its status check on `main`.
+- Require the merge check on `main` via a status check or a ruleset that points to a protected workflow ("Require workflows to pass before merging").
 - Block force pushes to `main`.
-- Use merge commits (or keep the `Reason:` line in squash messages) so the history stays intact.
+- Use merge commits—or keep the `Reason:` line when squash-merging—so the history stays intact.
 
 ## `.policy/` configuration
 
@@ -101,7 +101,10 @@ jobs:
   forbid = ["^\\s*(from|import)\\s+pytest\\b"]
   fix = "Keep source modules under 300 lines and free of test imports."
   ```
-- `.policy/symbols.toml`: Python AST identifier checks (`.py` files only) with `[settings]` (`forbidden_subwords`), `[replacements]` (`<canonical> = ["<forbidden>", ...]`), and `[[rules]]` (`files`, `kinds` in `["module", "class", "function", "method"]`, optional `visibility` in `["all", "public", "private"]`, `pattern`, `fix`):
+- `.policy/symbols.toml`: Python AST identifier checks for `.py` files across three sections:
+  - `[settings]`: `forbidden_subwords` list.
+  - `[replacements]`: `<canonical> = ["<forbidden>", ...]` mappings.
+  - `[[rules]]`: binds `files`, `kinds`, and optional `visibility` to a regex `pattern` and `fix` message (`kinds` in `["module", "class", "function", "method"]` and `visibility` in `["all", "public", "private"]`):
   ```toml
   [settings]
   forbidden_subwords = ["data", "info", "temp", "util"]
@@ -125,7 +128,7 @@ jobs:
 
 ### Traceability
 
-Requirements are flat TOML files under `trace/` with an `id`, `title`, single-line `acceptance` criteria, and `tests`. Every requirement must link to at least one existing test (`.py` AST `def test_*` / `class Test*: def test_*`, or `.c` Unity `void test_*(void)` definitions), and every test in `tests/` must be linked by at least one requirement:
+Requirements are flat TOML files under `trace/` with an `id`, `title`, single-line `acceptance` criteria, and `tests`. Each requirement must link to at least one existing test, and at least one requirement must link every test in `tests/`. `harness` discovers both Python AST tests and C Unity tests (`def test_*`, `class Test*`, and `void test_*(void)`):
 
 ```toml
 # trace/REQ-RED.toml
@@ -142,9 +145,9 @@ On `feat/*`, `fix/*`, and `refactor/*` branches, agents and developers can add n
 
 ## Agents and TDD
 
-Tell agents to write a failing test first and to make it pass without editing tests. The red check is the backstop: source changes only merge with tests that fail against the base source.
+Tell agents to write a failing test first and to make it pass without editing tests. The red check enforces this workflow because source changes only merge when tests fail against the base source.
 
-For parallel development of orthogonal requirements, run one `git worktree` per requirement (`git worktree add -b feat/req-a ../wt-req-a main`), seed its `trace/REQ-*.toml` on the branch, and rebase each subsequent worktree onto `main` (`git rebase main && harness check --base main`) before fast-forward merging.
+Run one `git worktree` per requirement when developing orthogonal requirements in parallel, and seed its `trace/REQ-*.toml` on the branch (`git worktree add -b feat/req-a ../wt-req-a main`). Rebase each subsequent worktree onto `main` before fast-forward merging (`git rebase main && harness check --base main`).
 
 ## Development
 

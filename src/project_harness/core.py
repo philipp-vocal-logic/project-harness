@@ -53,7 +53,7 @@ def _failure_detail(lines: Sequence[str], returncode: int) -> str:
 
 
 def _run(cwd: Path, command: str) -> tuple[int, str]:
-    """Run command in cwd; return its exit code and the most relevant output line."""
+    """Run command in cwd and return its exit code with the most relevant output line."""
     args = shlex.split(command)
     environment = {key: environ[key] for key in environ.keys() - {"VIRTUAL_ENV"}}
     completed = subprocess.run(
@@ -65,7 +65,7 @@ def _run(cwd: Path, command: str) -> tuple[int, str]:
 
 
 def run_commands(root: Path, checks: Sequence[str]) -> list[str]:
-    """Execute check commands in root; each must exit 0."""
+    """Execute check commands in root and report a violation whenever a command exits non-zero."""
     violations: list[str] = []
     for command in checks:
         code, detail = _run(root, command)
@@ -75,7 +75,7 @@ def run_commands(root: Path, checks: Sequence[str]) -> list[str]:
 
 
 def check_builtin_policies(root: Path, policy_texts: Mapping[str, str]) -> list[str]:
-    """Run built-in policy checkers in-process for each present .policy/*.toml text."""
+    """Run built-in .policy/*.toml checks in-process for each present policy file."""
     violations: list[str] = []
     if "architecture.toml" in policy_texts:
         violations.extend(
@@ -227,8 +227,8 @@ def _weakened_requirements(
 def check_merge(root: Path, base_reference: str, branch: str | None) -> list[str]:
     """Check HEAD against base_reference using the workflow and policy rules on base_reference.
 
-    Once the protected-path and red checks pass, a branch whose approved protected changes
-    include .policy/ files is judged by its own .policy/ files; all others by base_reference's.
+    Evaluates built-in and workflow checks against the base .policy/ by default, or against HEAD's
+    .policy/ when an approved policy/* branch modifies .policy/ files.
     """
     if git(root, "status", "--porcelain").strip():
         return [

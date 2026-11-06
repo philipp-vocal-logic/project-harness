@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Fast local feedback only; the merge check in CI is the gate.
+# Provide fast local feedback because the CI merge check enforces the gate.
 uv lock --check -q

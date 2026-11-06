@@ -35,7 +35,7 @@ ALLOWED_REQUIREMENT_KEYS = frozenset({"id", "title", "acceptance", "tests"})
 
 
 def git(cwd: Path, *args: str) -> str:
-    """Run git in cwd and return stdout; raise ValueError with git's message on failure."""
+    """Run git in cwd and return stdout, or raise ValueError with git's message on failure."""
     completed = subprocess.run(
         ["git", "-C", str(cwd), *args], capture_output=True, text=True, check=False
     )

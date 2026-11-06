@@ -2,7 +2,7 @@ id = "REQ-PROTECTED"
 title = "Reject protected path and weakened requirement changes at merge time unless on a policy branch with Reason lines"
 acceptance = [
     "Reject uncommitted working-tree changes in check_merge with [ERR_DIRTY].",
-    "Read .policy/*.toml from the base ref and diff merge-base..HEAD with -z --no-renames so renames and non-ASCII paths are inspected.",
+    "Read .policy/*.toml from the base branch and diff merge-base..HEAD with -z --no-renames so check_merge sees renames and non-ASCII paths.",
     "Reject changes to workflow.protected_paths or weakened base requirements with [ERR_PROTECTED] unless on a policy/* branch where every touching commit has a 'Reason: <why>' line.",
     "Evaluate a policy/* branch against its own .policy/ rules once its protected .policy/ changes and Reason lines pass.",
     "Compare requirements against base_reference so parallel worktrees must rebase onto new base requirements before passing check_merge.",
