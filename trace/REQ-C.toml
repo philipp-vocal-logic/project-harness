@@ -2,6 +2,7 @@ id = "REQ-C"
 title = "Support ANSI C Unity test discovery in traceability and C/Unity failure diagnostics in workflow checks"
 acceptance = [
     "Discover C test definitions matching 'void/int test_*(void) {' in .c files while ignoring comments, string literals, prototypes, and helpers.",
+    "Ignore '#if 0' blocks during C test discovery.",
     "Extract C compiler error/fatal-error lines, Unity ':FAIL' lines, and C assertion failures in workflow command diagnostics.",
 ]
 tests = [

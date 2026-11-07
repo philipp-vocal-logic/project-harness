@@ -101,12 +101,13 @@ jobs:
   forbid = ["^\\s*(from|import)\\s+pytest\\b"]
   fix = "Keep source modules under 300 lines and free of test imports."
   ```
-- `.policy/symbols.toml`: Python AST identifier checks for `.py` files across three sections:
-  - `[settings]`: `forbidden_subwords` list.
+- `.policy/symbols.toml`: Python AST and C (`.c`, `.h`) identifier checks across three sections:
+  - `[settings]`: optional `files` glob list (defaults to `["**/*.py"]`) and `forbidden_subwords` list.
   - `[replacements]`: `<canonical> = ["<forbidden>", ...]` mappings.
-  - `[[rules]]`: binds `files`, `kinds`, and optional `visibility` to a regex `pattern` and `fix` message (`kinds` in `["module", "class", "function", "method"]` and `visibility` in `["all", "public", "private"]`):
+  - `[[rules]]`: binds `files`, `kinds`, and optional `visibility` to a regex `pattern` and `fix` message (`kinds` in `["module", "class", "function", "method", "macro", "typedef", "type", "enumerator", "variable"]` and `visibility` in `["all", "public", "private"]`; in C, `private` matches `static` functions/variables and macros, typedefs, types, and enumerators defined in `.c` files):
   ```toml
   [settings]
+  files = ["src/**/*.py"]
   forbidden_subwords = ["data", "info", "temp", "util"]
 
   [replacements]

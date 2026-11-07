@@ -1,0 +1,12 @@
+id = "REQ-SYMBOL-C"
+title = "Enforce C symbol naming schemas, forbidden subwords, and canonical replacements in .c and .h files"
+acceptance = [
+    "Scope symbol discovery using settings.files globs in .policy/symbols.toml while defaulting to '**/*.py'.",
+    "Discover C module, macro, typedef, type, enumerator, function, variable, and local/member/parameter symbols in .c and .h files while ignoring comments, literals, '#if 0' blocks, call sites, and member accesses.",
+    "Classify C visibility as private for static functions and variables and for macros, typedefs, types, and enumerators defined in .c files.",
+]
+tests = [
+    "tests/test_symbol.py::test_check_symbol_c_ignores_comments_literals_disabled_blocks_and_extern_c",
+    "tests/test_symbol.py::test_check_symbol_parses_c_definitions_by_kind_and_visibility",
+    "tests/test_symbol.py::test_check_symbols_scopes_discovery_with_settings_files",
+]

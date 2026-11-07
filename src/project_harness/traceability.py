@@ -8,11 +8,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from project_harness.config import parse_requirement, walk_files
-from project_harness.model import Requirement, TraceabilityConfig
+from project_harness.model import Requirement, TraceabilityConfig, blank_c_source
 
-C_COMMENT_OR_LITERAL_PATTERN = re.compile(
-    r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*'
-)
 C_TEST_PATTERN = re.compile(
     r"\b(?:static\s+)?(?:void|int)\s+(test_[A-Za-z0-9_]*)\s*\(\s*(?:void)?\s*\)\s*\{"
 )
@@ -61,12 +58,8 @@ def _parse_file_tests(relative_path: str, text: str) -> dict[str, str]:
     return discovered
 
 
-def _blank_match(match: re.Match[str]) -> str:
-    return "\n" * match.group(0).count("\n")
-
-
 def _parse_c_tests(relative_path: str, text: str) -> dict[str, str]:
-    blanked = C_COMMENT_OR_LITERAL_PATTERN.sub(_blank_match, text)
+    blanked = blank_c_source(text)
     return {
         f"{relative_path}::{match.group(1)}": (
             f"{relative_path}:{blanked.count('\n', 0, match.start()) + 1}:1"

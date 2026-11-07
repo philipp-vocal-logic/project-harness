@@ -28,7 +28,7 @@ ALLOWED_WORKFLOW_KEYS = frozenset(
     {"protected_paths", "checks", "source_paths", "test_command", "red_exit_codes"}
 )
 ALLOWED_ARCHITECTURE_KEYS = frozenset({"files", "fix", "max_lines", "forbid"})
-ALLOWED_SYMBOL_KEYS = frozenset({"forbidden_subwords"})
+ALLOWED_SYMBOL_KEYS = frozenset({"files", "forbidden_subwords"})
 ALLOWED_SYMBOL_RULE_KEYS = frozenset({"files", "kinds", "visibility", "pattern", "fix"})
 ALLOWED_TRACEABILITY_KEYS = frozenset({"requirements", "tests"})
 ALLOWED_REQUIREMENT_KEYS = frozenset({"id", "title", "acceptance", "tests"})
@@ -172,10 +172,10 @@ def parse_architecture(text: str) -> tuple[ArchitectureRule, ...]:
     return tuple(_parse_architecture_rule(entry) for entry in rules)
 
 
-def _parse_symbol_rule(raw_rule: Any) -> SymbolRule:
+def _parse_symbol_rule(raw_rule: Any, default_files: tuple[str, ...]) -> SymbolRule:
     table = _require_table(raw_rule, "symbols.rules")
     _check_keys(table, ALLOWED_SYMBOL_RULE_KEYS, "symbols.rules")
-    files = _parse_glob_tuple(table.get("files", ["**/*.py"]), "symbols.rules.files")
+    files = _parse_glob_tuple(table.get("files", list(default_files)), "symbols.rules.files")
     kinds = frozenset(_parse_string_tuple(table.get("kinds"), "symbols.rules.kinds"))
     if not files or not kinds or not kinds <= SYMBOL_KINDS:
         raise ValueError(f"symbols.rules needs files and kinds in {sorted(SYMBOL_KINDS)}")
@@ -193,6 +193,9 @@ def parse_symbols(text: str) -> SymbolSchema:
     _check_keys(raw, frozenset({"settings", "replacements", "rules"}), "symbols.toml")
     settings = _require_table(raw.get("settings", {}), "symbols.settings")
     _check_keys(settings, ALLOWED_SYMBOL_KEYS, "symbols.settings")
+    files = _parse_glob_tuple(settings.get("files", ["**/*.py"]), "symbols.settings.files")
+    if not files:
+        raise ValueError("'symbols.settings.files' must not be empty")
     replacements_table = _require_table(raw.get("replacements", {}), "symbols.replacements")
     replacements = {
         _parse_subword_tuple([canonical], "symbols.replacements")[0]: _parse_subword_tuple(
@@ -204,7 +207,8 @@ def parse_symbols(text: str) -> SymbolSchema:
     raw_rules = raw.get("rules", [])
     if not isinstance(raw_rules, list):
         raise ValueError("'symbols.rules' must be a list of tables")
-    return SymbolSchema(forbidden, replacements, tuple(map(_parse_symbol_rule, raw_rules)))
+    rules = tuple(_parse_symbol_rule(entry, files) for entry in raw_rules)
+    return SymbolSchema(forbidden, replacements, rules, files)
 
 
 def _is_test_link(test_link: str) -> bool:

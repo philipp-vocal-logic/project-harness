@@ -12,8 +12,24 @@ REASON_PATTERN = re.compile(r"^Reason:[ \t]*\S", re.MULTILINE)
 POLICY_BRANCH_PREFIX = "policy/"
 REFACTOR_BRANCH_PREFIX = "refactor/"
 REQUIREMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-SYMBOL_KINDS: frozenset[str] = frozenset({"module", "class", "function", "method"})
+SYMBOL_KINDS: frozenset[str] = frozenset(
+    {
+        "module",
+        "class",
+        "function",
+        "method",
+        "macro",
+        "typedef",
+        "type",
+        "enumerator",
+        "variable",
+    }
+)
 SYMBOL_VISIBILITIES: frozenset[str] = frozenset({"all", "public", "private"})
+_C_COMMENT_OR_LITERAL_PATTERN = re.compile(
+    r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*'
+)
+_C_DIRECTIVE_PATTERN = re.compile(r"^\s*#\s*(if\s+0\b|if\b|ifdef\b|ifndef\b|else\b|endif\b)")
 
 _UPPER = r"[A-ZÀ-ÖØ-Þ]"
 _LOWER = r"[a-zß-öø-ÿ]"
@@ -63,6 +79,7 @@ class SymbolSchema:
     forbidden_subwords: tuple[str, ...] = ()
     replacements: dict[str, tuple[str, ...]] = field(default_factory=dict)
     rules: tuple[SymbolRule, ...] = ()
+    files: tuple[str, ...] = ("**/*.py",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +91,7 @@ class Symbol:
     file: Path
     line: int
     column: int
+    is_private: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,3 +165,32 @@ def subword_forms(word: str) -> frozenset[str]:
 def has_reason(message: str) -> bool:
     """Return True if a commit message contains a 'Reason: <why>' line."""
     return REASON_PATTERN.search(message) is not None
+
+
+def _blank_span(span: str) -> str:
+    return "".join("\n" if char == "\n" else " " for char in span)
+
+
+def _next_disabled_depth(depth: int, directive: str) -> int:
+    if depth == 0:
+        return 1 if directive.startswith("if") and directive.endswith("0") else 0
+    if directive.startswith("if"):
+        return depth + 1
+    if directive == "endif" or (directive == "else" and depth == 1):
+        return depth - 1
+    return depth
+
+
+def blank_c_source(text: str) -> str:
+    """Replace C comments, literals, and '#if 0' blocks with spaces while preserving newlines."""
+    without_comments = _C_COMMENT_OR_LITERAL_PATTERN.sub(
+        lambda match: _blank_span(match.group(0)), text
+    )
+    lines: list[str] = []
+    depth = 0
+    for line in without_comments.splitlines(keepends=True):
+        directive = match.group(1) if (match := _C_DIRECTIVE_PATTERN.match(line)) else ""
+        next_depth = _next_disabled_depth(depth, directive)
+        lines.append(_blank_span(line) if (depth or next_depth) else line)
+        depth = next_depth
+    return "".join(lines)

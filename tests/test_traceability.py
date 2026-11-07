@@ -133,7 +133,14 @@ def test_check_traceability_discovers_c_unity_tests(tmp_path: Path) -> None:
         "/* void test_comment_only(void) {} */\n"
         "// void test_line_comment_only(void) {}\n"
         'const char *banner = "void test_banner_only(void) {}";\n'
+        "#if 0\n"
+        "#ifdef EXTRA\n"
+        "void test_nested_disabled(void) {}\n"
+        "#endif\n"
+        "void test_disabled_only(void) {}\n"
+        "#else\n"
         "static void test_add(void);\n"
+        "#endif\n"
         "static void test_helper(int value) {}\n"
         "void setUp(void) {}\n"
         "void tearDown(void) {}\n"
@@ -159,7 +166,7 @@ def test_check_traceability_discovers_c_unity_tests(tmp_path: Path) -> None:
         "test 'tests/test_calc.c::test_comment_only' does not exist "
         "(Fix: define 'tests/test_calc.c::test_comment_only' or remove the stale link "
         "on a 'policy/*' branch)",
-        "tests/test_calc.c:9:1 [ERR_UNTRACED_TEST]: "
+        "tests/test_calc.c:16:1 [ERR_UNTRACED_TEST]: "
         "test 'tests/test_calc.c::test_untraced' is not linked to any requirement "
         "(Fix: add 'tests/test_calc.c::test_untraced' to a requirement's 'tests' list in trace/)",
     ]
